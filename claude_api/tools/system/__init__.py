@@ -1,13 +1,13 @@
-"""System tools — environment info + skill loading."""
+"""System tools — environment info, skill loading, skill/tool creation."""
 from __future__ import annotations
 
-from . import get_env, load_skill
+from . import get_env, load_skill, create_skill, create_tool
 
 # Tools with plain handlers
 STANDALONE_TOOLS = [get_env]
 
-# Tools needing a skill_loader instance
-CONTEXT_TOOLS = [load_skill]
+# Tools needing context (skill_loader, config, registry)
+CONTEXT_TOOLS = [load_skill, create_skill, create_tool]
 
 
 def register(config, registry, skill_loader=None, **kwargs):
@@ -15,5 +15,7 @@ def register(config, registry, skill_loader=None, **kwargs):
         registry.register(mod.NAME, mod.DESCRIPTION, mod.INPUT_SCHEMA, mod.handler)
     if skill_loader is not None:
         for mod in CONTEXT_TOOLS:
-            h = mod.make_handler(skill_loader=skill_loader)
+            h = mod.make_handler(
+                skill_loader=skill_loader, config=config, registry=registry,
+            )
             registry.register(mod.NAME, mod.DESCRIPTION, mod.INPUT_SCHEMA, h)

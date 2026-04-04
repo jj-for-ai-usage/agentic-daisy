@@ -157,7 +157,8 @@ def build_default_system_prompt(registry: ToolRegistry, config: DaisyConfig = No
     # Append skill index if skills are available
     if config is not None:
         from .skills import SkillLoader
-        loader = SkillLoader(config.skills_dir)
+        from .config import USER_SKILLS_DIR
+        loader = SkillLoader([USER_SKILLS_DIR, config.skills_dir])
         skills_section = loader.get_index_for_prompt()
         if skills_section:
             prompt += "\n" + skills_section

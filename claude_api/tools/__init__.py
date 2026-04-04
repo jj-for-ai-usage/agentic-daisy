@@ -11,6 +11,8 @@ if TYPE_CHECKING:
 
 def load_all_tools(config: DaisyConfig, registry: ToolRegistry) -> None:
     """Load all built-in tools (everything except execution tools)."""
+    from claude_api.config import USER_SKILLS_DIR, USER_TOOLS_DIR, DEFAULT_CUSTOM_TOOLS_DIR
+    from claude_api.custom_tools import CustomToolLoader
     from claude_api.skills import SkillLoader
     from .memory import register as reg_memory
     from .file import register as reg_file
@@ -19,9 +21,11 @@ def load_all_tools(config: DaisyConfig, registry: ToolRegistry) -> None:
     reg_memory(config, registry)
     reg_file(config, registry)
     reg_search(config, registry)
-    # System tools get a SkillLoader for load_skill
-    skill_loader = SkillLoader(config.skills_dir)
+    # System tools get a SkillLoader (user-level first, project overrides)
+    skill_loader = SkillLoader([USER_SKILLS_DIR, config.skills_dir])
     reg_system(config, registry, skill_loader=skill_loader)
+    # Load custom tools from ~/.daisy/tools/ and .daisy/tools/
+    CustomToolLoader([USER_TOOLS_DIR, DEFAULT_CUSTOM_TOOLS_DIR]).load_into(registry)
 
 
 def load_execution_tools(

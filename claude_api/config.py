@@ -20,6 +20,12 @@ DEFAULT_SESSION_DIR = os.path.join(_PROJECT_ROOT, ".daisy", "sessions")
 DEFAULT_WORKSPACE_DIR = os.path.join(_PROJECT_ROOT, ".daisy", "workspace")
 DEFAULT_SKILLS_DIR = os.path.join(_PROJECT_ROOT, ".daisy", "skills")
 
+# User-level persistent dirs (shared across projects, next to ~/.daisy/api_key)
+_USER_HOME = os.path.expanduser("~/.daisy")
+USER_SKILLS_DIR = os.path.join(_USER_HOME, "skills")
+USER_TOOLS_DIR = os.path.join(_USER_HOME, "tools")
+DEFAULT_CUSTOM_TOOLS_DIR = os.path.join(_PROJECT_ROOT, ".daisy", "tools")
+
 # API key file stays in home dir (should NOT be inside the git repo)
 DEFAULT_API_KEY_FILE = os.path.expanduser("~/.daisy/api_key")
 

@@ -4,27 +4,40 @@ from __future__ import annotations
 import json
 import logging
 import os
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Union
 
 LOG = logging.getLogger("daisy")
 
 
 class SkillLoader:
-    """Loads skill .md files from a directory. Parses frontmatter for the
-    index (name, summary, trigger) and serves full content on demand."""
+    """Loads skill .md files from one or more directories. Parses frontmatter
+    for the index (name, summary, trigger) and serves full content on demand.
 
-    def __init__(self, skills_dir: str) -> None:
-        self.skills_dir = skills_dir
+    When multiple directories are given, they are scanned in order — later
+    directories override earlier ones for the same skill name. This lets
+    project-level skills (.daisy/skills/) override user-level (~/.daisy/skills/).
+    """
+
+    def __init__(self, skills_dirs: Union[str, List[str]]) -> None:
+        if isinstance(skills_dirs, str):
+            skills_dirs = [skills_dirs]
+        self.skills_dirs = skills_dirs
         self._index: Dict[str, Dict[str, str]] = {}  # name -> {summary, trigger, file}
-        if os.path.isdir(skills_dir):
-            self._scan()
+        self._scan_all()
 
-    def _scan(self) -> None:
-        """Scan .md files and parse --- frontmatter for index metadata."""
-        for fname in sorted(os.listdir(self.skills_dir)):
+    def _scan_all(self) -> None:
+        """Scan all directories and build the merged index."""
+        self._index.clear()
+        for d in self.skills_dirs:
+            if os.path.isdir(d):
+                self._scan_dir(d)
+
+    def _scan_dir(self, directory: str) -> None:
+        """Scan a single directory for .md skill files."""
+        for fname in sorted(os.listdir(directory)):
             if not fname.endswith(".md"):
                 continue
-            path = os.path.join(self.skills_dir, fname)
+            path = os.path.join(directory, fname)
             try:
                 meta = self._parse_frontmatter(path)
                 if meta.get("name"):
@@ -36,10 +49,14 @@ class SkillLoader:
             except Exception as exc:
                 LOG.warning("Skipping skill file %s: %s", fname, exc)
 
+    def refresh(self) -> None:
+        """Re-scan all directories. Call after creating a new skill."""
+        self._scan_all()
+
     @staticmethod
     def _parse_frontmatter(path: str) -> Dict[str, str]:
         """Read YAML-like frontmatter between --- delimiters."""
-        meta = {}  # type: Dict[str, str]
+        meta: Dict[str, str] = {}
         with open(path, "r") as f:
             lines = f.readlines()
         if not lines or lines[0].strip() != "---":
