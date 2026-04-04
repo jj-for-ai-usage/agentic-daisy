@@ -173,7 +173,7 @@ def run_agent_loop(
 
             tool_name = block.name
             tool_input = block.input
-            LOG.debug("Executing tool: %s(%s)", tool_name, tool_input)
+            LOG.info("[tool] %s", tool_name)
 
             t_tool = time.time()
             try:

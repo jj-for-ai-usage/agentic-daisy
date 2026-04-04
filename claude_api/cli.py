@@ -62,6 +62,9 @@ def main() -> None:
         level=logging.DEBUG if args.debug else logging.INFO,
         format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
     )
+    # Suppress noisy third-party loggers (httpx prints every HTTP request)
+    logging.getLogger("httpx").setLevel(logging.WARNING)
+    logging.getLogger("httpcore").setLevel(logging.WARNING)
 
     config = DaisyConfig(
         api_key=args.api_key,
