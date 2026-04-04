@@ -1,13 +1,13 @@
-"""System tools — environment info, skill loading, skill/tool creation."""
+"""System tools — environment info, skill loading, skill/tool creation, repair."""
 from __future__ import annotations
 
-from . import get_env, load_skill, create_skill, create_tool
+from . import get_env, load_skill, create_skill, create_tool, repair_tools, repair_skills
 
 # Tools with plain handlers
 STANDALONE_TOOLS = [get_env]
 
 # Tools needing context (skill_loader, config, registry)
-CONTEXT_TOOLS = [load_skill, create_skill, create_tool]
+CONTEXT_TOOLS = [load_skill, create_skill, create_tool, repair_tools, repair_skills]
 
 
 def register(config, registry, skill_loader=None, **kwargs):

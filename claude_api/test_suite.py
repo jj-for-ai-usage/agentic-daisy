@@ -494,7 +494,7 @@ def test_session_sanitize():
         shutil.rmtree(d)
 
 
-@test("Built-in tools: all 23 registered")
+@test("Built-in tools: all 25 registered")
 def test_builtin_tools():
     from claude_api.built_in_tools import create_default_registry
     from claude_api.config import DaisyConfig
@@ -512,6 +512,7 @@ def test_builtin_tools():
         "get_env", "load_skill", "create_skill", "create_tool",
         "create_task", "update_task", "list_tasks", "get_task",
         "submit_batch", "check_batch", "get_batch_results",
+        "repair_tools", "repair_skills",
     }
     assert names == expected, "Missing: %s  Extra: %s" % (expected - names, names - expected)
 
@@ -751,6 +752,102 @@ def test_get_batch_results_tool():
         # Summary only
         r = json.loads(handler(batch_id=bid, summary_only=True))
         assert len(r["results"][0]["text"]) == 203  # 200 + "..."
+    finally:
+        shutil.rmtree(d)
+
+
+@test("repair_tools: diagnose and fix missing schema type")
+def test_repair_tools():
+    from claude_api.tool_registry import ToolRegistry
+    from claude_api.tools.system.repair_tools import make_handler
+    d = tempfile.mkdtemp()
+    try:
+        # Create a tool with missing "type" in INPUT_SCHEMA
+        with open(os.path.join(d, "bad_tool.py"), "w") as f:
+            f.write('import json\n'
+                    'NAME = "bad_tool"\n'
+                    'DESCRIPTION = "A bad tool"\n'
+                    'INPUT_SCHEMA = {\n'
+                    '  "properties": {"x": {"type": "string"}}\n'
+                    '}\n'
+                    'def handler(x=""):\n'
+                    '    return json.dumps({"x": x})\n')
+        # Create a tool with syntax error
+        with open(os.path.join(d, "broken.py"), "w") as f:
+            f.write('def this is not valid python\n')
+        # Patch config paths
+        import claude_api.config as cfg
+        old_user = cfg.USER_TOOLS_DIR
+        old_proj = cfg.DEFAULT_CUSTOM_TOOLS_DIR
+        cfg.USER_TOOLS_DIR = d
+        cfg.DEFAULT_CUSTOM_TOOLS_DIR = tempfile.mkdtemp()  # empty
+        try:
+            reg = ToolRegistry()
+            handler = make_handler(config=None, registry=reg)
+            # Dry run
+            r = json.loads(handler(fix=False))
+            assert r["summary"]["total_scanned"] == 2
+            assert r["summary"]["needs_manual_fix"] >= 1
+            # Fix
+            r = json.loads(handler(fix=True))
+            fixed = [t for t in r["tools"] if "fixed" in t["status"]]
+            unfixable = [t for t in r["tools"] if t["status"] == "unfixable"]
+            assert len(fixed) == 1, "Should fix bad_tool: %s" % r["tools"]
+            assert len(unfixable) == 1, "broken.py should be unfixable"
+            # Verify the file was actually fixed
+            with open(os.path.join(d, "bad_tool.py")) as f:
+                content = f.read()
+            assert '"type": "object"' in content, "File should have type added"
+        finally:
+            cfg.USER_TOOLS_DIR = old_user
+            cfg.DEFAULT_CUSTOM_TOOLS_DIR = old_proj
+    finally:
+        shutil.rmtree(d)
+
+
+@test("repair_skills: diagnose and fix missing frontmatter")
+def test_repair_skills():
+    from claude_api.skills import SkillLoader
+    from claude_api.tools.system.repair_skills import make_handler
+    d = tempfile.mkdtemp()
+    try:
+        # Skill with no frontmatter
+        with open(os.path.join(d, "no_front.md"), "w") as f:
+            f.write("# Just content\nNo frontmatter here.\n")
+        # Skill with missing name
+        with open(os.path.join(d, "no_name.md"), "w") as f:
+            f.write("---\nsummary: Has summary but no name\n---\n# Content\nStuff.\n")
+        # Good skill
+        with open(os.path.join(d, "good.md"), "w") as f:
+            f.write("---\nname: good\nsummary: A good skill\n---\n# Steps\n1. Do thing\n")
+
+        loader = SkillLoader([d])
+
+        class FakeConfig:
+            skills_dir = tempfile.mkdtemp()  # empty
+
+        handler = make_handler(config=FakeConfig(), skill_loader=loader)
+        # Dry run
+        r = json.loads(handler(fix=False))
+        assert r["summary"]["total_scanned"] == 3
+        assert r["summary"]["ok"] == 1
+        assert r["summary"]["needs_manual_fix"] == 2
+        # Fix
+        r = json.loads(handler(fix=True))
+        fixed = [s for s in r["skills"] if "fixed" in s["status"]]
+        assert len(fixed) == 2, "Should fix both broken skills: %s" % r["skills"]
+        # Verify no_front.md now has frontmatter
+        with open(os.path.join(d, "no_front.md")) as f:
+            content = f.read()
+        assert content.startswith("---"), "Should have frontmatter added"
+        assert "name: no_front" in content
+        # Verify no_name.md now has name
+        with open(os.path.join(d, "no_name.md")) as f:
+            content = f.read()
+        assert "name: no_name" in content
+        # Verify skill loader was refreshed and finds them
+        assert "good" in loader._index
+        assert "no_front" in loader._index
     finally:
         shutil.rmtree(d)
 
@@ -1032,6 +1129,8 @@ OFFLINE_TESTS = [
     test_batch_corruption,
     test_batch_persistence,
     test_get_batch_results_tool,
+    test_repair_tools,
+    test_repair_skills,
     test_admin_hidden,
     test_cli_help,
     test_cli_list_sessions,
@@ -1056,6 +1155,8 @@ QUICK_TESTS = [
     test_task_lifecycle,
     test_batch_store,
     test_get_batch_results_tool,
+    test_repair_tools,
+    test_repair_skills,
     test_admin_hidden,
     test_cli_help,
 ]
