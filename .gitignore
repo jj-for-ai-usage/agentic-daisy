@@ -4,5 +4,6 @@ __pycache__/
 vendor/lib/
 !vendor/wheels/
 .anthropic_key
+api_key
 ._*
 *.tar.gz

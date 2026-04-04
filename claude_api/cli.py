@@ -85,11 +85,18 @@ def main() -> None:
         sys.exit(0)
 
     if not config.api_key:
-        LOG.error(
-            "No API key provided. "
-            "Pass --api-key or set env var:  "
-            "export ANTHROPIC_API_KEY='sk-ant-...'  (bash)  |  "
-            "setenv ANTHROPIC_API_KEY 'sk-ant-...'  (csh/tcsh)"
+        from .config import DEFAULT_API_KEY_FILE
+        print(
+            "ERROR: No API key found.\n"
+            "\n"
+            "Options (in priority order):\n"
+            "  1. bin/daisy --api-key 'sk-ant-...'\n"
+            "  2. export ANTHROPIC_API_KEY='sk-ant-...'  (bash)\n"
+            "     setenv ANTHROPIC_API_KEY 'sk-ant-...'  (csh/tcsh)\n"
+            "  3. Store in key file (recommended for persistent use):\n"
+            "       echo 'sk-ant-...' > %s\n"
+            "       chmod 600 %s\n" % (DEFAULT_API_KEY_FILE, DEFAULT_API_KEY_FILE),
+            file=sys.stderr,
         )
         sys.exit(1)
 
