@@ -94,6 +94,7 @@ class BatchStore:
             "estimated_input_tokens": estimated_input_tokens,
             "actual_input_tokens": None,
             "actual_output_tokens": None,
+            "updated": now,
         }
         self._batches.append(record)
         self._save()

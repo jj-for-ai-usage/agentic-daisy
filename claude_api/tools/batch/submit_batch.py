@@ -124,14 +124,15 @@ def make_handler(batch_store=None, task_store=None, config=None, **kwargs):
             })
 
         # Create BatchStore record
-        batch_store.create_batch(
+        create_result = json.loads(batch_store.create_batch(
             task_id=task_id,
             model=model,
             manifest=manifest,
             batch_api_id=batch.id,
             expires_at=batch.expires_at.isoformat() if batch.expires_at else "",
             estimated_input_tokens=total_est_tokens,
-        )
+        ))
+        batch_id = create_result["batch_id"]
 
         # Update linked task
         task_store.update_task(
@@ -140,10 +141,6 @@ def make_handler(batch_store=None, task_store=None, config=None, **kwargs):
             notes="Batch submitted: %d requests, model: %s, batch API ID: %s"
                   % (len(requests), model, batch.id),
         )
-
-        # Get the batch_id we just created
-        pending = batch_store.get_pending_batches()
-        batch_id = pending[-1]["id"] if pending else "unknown"
 
         result = {
             "status": "submitted",
