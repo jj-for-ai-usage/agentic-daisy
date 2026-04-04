@@ -82,6 +82,7 @@ def test_imports():
     from claude_api.tools.execution.run_command import make_handler as _rc
     from claude_api.tools.execution.run_python import make_handler as _rp
     from claude_api.session import SessionManager
+    from claude_api.compaction import ConversationCompactor
     from claude_api.cli import parse_args
     import anthropic
     assert anthropic.__version__, "Anthropic SDK version not found"
@@ -540,6 +541,138 @@ def test_cli_help():
     assert "--list-sessions" in result.stdout
 
 
+@test("Budget: warning at 80%, exceeded at 100%")
+def test_budget():
+    from claude_api.audit import AuditLogger, BudgetExceededError
+    d = tempfile.mkdtemp()
+    try:
+        # Budget of $0.01, haiku pricing (0.80/M in, 4.00/M out)
+        audit = AuditLogger(d, "claude-haiku-4-5", budget=0.01)
+        # Small call: cost ~$0.0028 (well under $0.01)
+        audit.log_api_call("claude-haiku-4-5", 1000, 500, "end_turn", 0.5, 0)
+        assert audit.check_budget() == "ok"
+        # Push to ~80% of budget: add more tokens
+        # Need cost >= $0.008 for warning. Current: $0.0028.
+        # Add 5000 in, 1000 out => +0.004 + 0.004 = +$0.008 => total $0.0108
+        audit.log_api_call("claude-haiku-4-5", 5000, 1000, "end_turn", 0.5, 1)
+        status = audit.check_budget()
+        assert status == "exceeded", "Expected exceeded at $0.0108, got %s (cost=$%.4f)" % (status, audit.get_session_cost())
+        # Verify the event was logged
+        with open(audit.log_file) as f:
+            events = [json.loads(l) for l in f.readlines()]
+        event_types = [e["event"] for e in events]
+        assert "budget_exceeded" in event_types, "Missing budget_exceeded event"
+    finally:
+        shutil.rmtree(d)
+
+
+@test("Budget: unlimited when budget is None")
+def test_budget_unlimited():
+    from claude_api.audit import AuditLogger
+    d = tempfile.mkdtemp()
+    try:
+        audit = AuditLogger(d, "claude-haiku-4-5", budget=None)
+        audit.log_api_call("claude-haiku-4-5", 1_000_000, 500_000, "end_turn", 1.0, 0)
+        assert audit.check_budget() == "ok", "Should always be ok with no budget"
+    finally:
+        shutil.rmtree(d)
+
+
+@test("Tool cache: cacheable tools served from cache")
+def test_tool_cache():
+    from claude_api.agent_loop import _CACHEABLE_TOOLS, _make_cache_key
+    # Verify cacheable set is correct
+    assert "read_file" in _CACHEABLE_TOOLS
+    assert "search_files" in _CACHEABLE_TOOLS
+    assert "get_env" in _CACHEABLE_TOOLS
+    # Verify non-cacheable
+    assert "run_command" not in _CACHEABLE_TOOLS
+    assert "write_file" not in _CACHEABLE_TOOLS
+    assert "save_memory" not in _CACHEABLE_TOOLS
+    assert "create_tool" not in _CACHEABLE_TOOLS
+    # Verify cache key determinism
+    key1 = _make_cache_key("read_file", {"path": "/tmp/a"})
+    key2 = _make_cache_key("read_file", {"path": "/tmp/a"})
+    key3 = _make_cache_key("read_file", {"path": "/tmp/b"})
+    assert key1 == key2, "Same input should produce same key"
+    assert key1 != key3, "Different input should produce different key"
+
+
+@test("Compaction: summarizes old messages")
+def test_compaction():
+    from claude_api.compaction import ConversationCompactor
+    # Create a mock client with a fake messages.create
+    class FakeResponse:
+        class content_block:
+            text = "Summary: user asked about X, assistant explained Y."
+        content = [content_block()]
+    class FakeMessages:
+        def create(self, **kwargs):
+            return FakeResponse()
+    class FakeClient:
+        messages = FakeMessages()
+
+    compactor = ConversationCompactor(FakeClient(), threshold_tokens=100)
+    history = [
+        {"role": "user", "content": "msg1"},
+        {"role": "assistant", "content": "resp1"},
+        {"role": "user", "content": "msg2"},
+        {"role": "assistant", "content": "resp2"},
+        {"role": "user", "content": "msg3"},
+        {"role": "assistant", "content": "resp3"},
+        {"role": "user", "content": "msg4"},
+        {"role": "assistant", "content": "resp4"},
+    ]
+    # Threshold too high — should not compact
+    result = compactor.maybe_compact(history, last_input_tokens=50)
+    assert result is False
+    assert len(history) == 8
+
+    # Threshold exceeded — should compact
+    result = compactor.maybe_compact(history, last_input_tokens=200)
+    assert result is True
+    # Should have: summary (user) + ack (assistant) + last 4 messages
+    assert len(history) == 6, "Expected 6 messages after compaction, got %d" % len(history)
+    assert "[Conversation Summary]" in history[0]["content"]
+    assert history[1]["role"] == "assistant"
+    # Last 4 should be preserved
+    assert history[2]["content"] == "msg3"
+    assert history[5]["content"] == "resp4"
+
+
+@test("Compaction: handles tool result blocks in history")
+def test_compaction_tool_blocks():
+    from claude_api.compaction import ConversationCompactor
+    class FakeResponse:
+        class content_block:
+            text = "Summary with tool results."
+        content = [content_block()]
+    class FakeMessages:
+        def create(self, **kwargs):
+            return FakeResponse()
+    class FakeClient:
+        messages = FakeMessages()
+
+    compactor = ConversationCompactor(FakeClient(), threshold_tokens=100)
+    history = [
+        {"role": "user", "content": "read this file"},
+        {"role": "assistant", "content": [
+            {"type": "tool_use", "id": "t1", "name": "read_file", "input": {"path": "/tmp/x"}},
+        ]},
+        {"role": "user", "content": [
+            {"type": "tool_result", "tool_use_id": "t1", "content": "file content here"},
+        ]},
+        {"role": "assistant", "content": [{"type": "text", "text": "The file contains..."}]},
+        {"role": "user", "content": "now search for errors"},
+        {"role": "assistant", "content": "found 3 errors"},
+        {"role": "user", "content": "thanks"},
+        {"role": "assistant", "content": "you're welcome"},
+    ]
+    result = compactor.maybe_compact(history, last_input_tokens=200)
+    assert result is True, "Should compact 8 messages (keep 4, summarize 4)"
+    assert "[Conversation Summary]" in history[0]["content"]
+
+
 @test("CLI: --list-sessions exits 0")
 def test_cli_list_sessions():
     import subprocess
@@ -643,6 +776,11 @@ OFFLINE_TESTS = [
     test_session_sanitize,
     test_builtin_tools,
     test_system_prompt,
+    test_budget,
+    test_budget_unlimited,
+    test_tool_cache,
+    test_compaction,
+    test_compaction_tool_blocks,
     test_cli_help,
     test_cli_list_sessions,
 ]
@@ -660,6 +798,9 @@ QUICK_TESTS = [
     test_session,
     test_builtin_tools,
     test_system_prompt,
+    test_budget,
+    test_tool_cache,
+    test_compaction,
     test_cli_help,
 ]
 

@@ -1,13 +1,14 @@
 """Agentic Daisy — Core agentic conversation loop."""
 from __future__ import annotations
 
+import json
 import logging
 import time
 from typing import Any, Dict, List, Optional
 
 import anthropic
 
-from .audit import AuditLogger
+from .audit import AuditLogger, BudgetExceededError
 from .config import DaisyConfig
 from .tool_registry import ToolRegistry
 
@@ -20,6 +21,13 @@ RETRY_BASE_DELAY = 2  # seconds; doubles each retry: 2, 4, 8, 16
 # Rough per-message token budget to warn before overflow.
 # Leave headroom for the response; warn if input approaches this.
 CONTEXT_TOKEN_WARNING = 150_000
+
+# Tools whose results can be cached within a single agent loop (read-only tools)
+_CACHEABLE_TOOLS = frozenset({
+    "read_file", "search_files", "find_files", "list_directory",
+    "directory_tree", "search_memory", "list_memories", "get_env",
+    "load_skill",
+})
 
 
 def _call_api_with_retry(client, call_kwargs: Dict[str, Any]) -> Any:
@@ -65,6 +73,11 @@ def _call_api_with_retry(client, call_kwargs: Dict[str, Any]) -> Any:
     raise last_exc  # type: ignore[misc]
 
 
+def _make_cache_key(tool_name: str, tool_input: dict) -> str:
+    """Deterministic cache key for a tool call."""
+    return tool_name + ":" + json.dumps(tool_input, sort_keys=True)
+
+
 def run_agent_loop(
     config: DaisyConfig,
     user_message: str,
@@ -90,7 +103,26 @@ def run_agent_loop(
     # Build kwargs for the API call
     sys_prompt = system_prompt or config.system_prompt or ""
 
+    # Per-turn tool result cache (read-only tools only)
+    tool_cache: Dict[str, str] = {}
+
+    # Conversation compactor (lazy import to avoid circular deps)
+    from .compaction import ConversationCompactor
+    compactor = ConversationCompactor(
+        client, threshold_tokens=config.compaction_threshold,
+    )
+
+    last_input_tokens = 0
+
     for round_num in range(MAX_TOOL_ROUNDS):
+        # Compact conversation if it's getting large
+        if round_num > 0 and last_input_tokens > 0:
+            compacted = compactor.maybe_compact(
+                conversation_history, last_input_tokens, audit,
+            )
+            if compacted:
+                LOG.info("Conversation compacted to save tokens.")
+
         call_kwargs: Dict[str, Any] = dict(
             model=config.model,
             max_tokens=config.max_tokens,
@@ -117,6 +149,8 @@ def run_agent_loop(
             )
         elapsed = time.time() - t0
 
+        last_input_tokens = response.usage.input_tokens
+
         audit.log_api_call(
             model=config.model,
             input_tokens=response.usage.input_tokens,
@@ -133,6 +167,22 @@ def run_agent_loop(
             response.stop_reason,
             elapsed,
         )
+
+        # Budget check
+        budget_status = audit.check_budget()
+        if budget_status == "exceeded":
+            cost = audit.get_session_cost()
+            return (
+                "[Daisy: session budget of $%.2f reached (current: $%.4f). "
+                "Use --budget to increase or --budget 0 for unlimited.]"
+                % (config.budget, cost)
+            )
+        if budget_status == "warning":
+            cost = audit.get_session_cost()
+            LOG.warning(
+                "Session cost $%.4f approaching budget $%.2f",
+                cost, config.budget,
+            )
 
         # Context window warning
         if response.usage.input_tokens > CONTEXT_TOKEN_WARNING:
@@ -175,30 +225,41 @@ def run_agent_loop(
             tool_input = block.input
             LOG.info("[tool] %s", tool_name)
 
-            t_tool = time.time()
-            try:
-                raw_result = registry.execute(tool_name, tool_input)
-                result_str = raw_result if isinstance(raw_result, str) else str(raw_result or "")
+            # Check cache for read-only tools
+            cache_key = _make_cache_key(tool_name, tool_input)
+            if tool_name in _CACHEABLE_TOOLS and cache_key in tool_cache:
+                result_str = tool_cache[cache_key]
                 is_error = False
-            except KeyError:
-                result_str = "Error: unknown tool '%s'" % tool_name
-                is_error = True
-            except Exception as exc:
-                result_str = "Error executing %s: %s" % (tool_name, exc)
-                is_error = True
-
-            tool_elapsed = time.time() - t_tool
-            audit.log_tool_execution(
-                tool_name=tool_name,
-                success=not is_error,
-                latency_s=tool_elapsed,
-                round_num=round_num,
-            )
-
-            if is_error:
-                LOG.warning("Tool %s failed: %s", tool_name, result_str)
+                audit.log_tool_cache_hit(tool_name, round_num)
+                LOG.debug("Tool %s served from cache", tool_name)
             else:
-                LOG.debug("Tool %s completed in %.3fs", tool_name, tool_elapsed)
+                t_tool = time.time()
+                try:
+                    raw_result = registry.execute(tool_name, tool_input)
+                    result_str = raw_result if isinstance(raw_result, str) else str(raw_result or "")
+                    is_error = False
+                except KeyError:
+                    result_str = "Error: unknown tool '%s'" % tool_name
+                    is_error = True
+                except Exception as exc:
+                    result_str = "Error executing %s: %s" % (tool_name, exc)
+                    is_error = True
+
+                tool_elapsed = time.time() - t_tool
+                audit.log_tool_execution(
+                    tool_name=tool_name,
+                    success=not is_error,
+                    latency_s=tool_elapsed,
+                    round_num=round_num,
+                )
+
+                if is_error:
+                    LOG.warning("Tool %s failed: %s", tool_name, result_str)
+                else:
+                    LOG.debug("Tool %s completed in %.3fs", tool_name, tool_elapsed)
+                    # Cache result for read-only tools
+                    if tool_name in _CACHEABLE_TOOLS:
+                        tool_cache[cache_key] = result_str
 
             tool_results.append({
                 "type": "tool_result",

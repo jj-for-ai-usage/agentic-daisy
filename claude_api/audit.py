@@ -10,10 +10,21 @@ from datetime import datetime, timezone
 from typing import Optional
 
 
+class BudgetExceededError(Exception):
+    """Raised when session cost exceeds the configured budget."""
+
+    def __init__(self, cost: float, budget: float) -> None:
+        self.cost = cost
+        self.budget = budget
+        super().__init__(
+            "Session budget of $%.2f exceeded (current: $%.4f)" % (budget, cost)
+        )
+
+
 class AuditLogger:
     """Append-only JSONL audit logger. One file per session."""
 
-    def __init__(self, log_dir: str, model: str) -> None:
+    def __init__(self, log_dir: str, model: str, budget: Optional[float] = None) -> None:
         self.session_id = uuid.uuid4().hex[:8]
         self.log_dir = log_dir
         os.makedirs(log_dir, mode=0o700, exist_ok=True)
@@ -22,6 +33,8 @@ class AuditLogger:
             log_dir, "daisy-%s-%s.jsonl" % (self.session_id, date_str)
         )
         self._model = model
+        self._budget = budget  # None = unlimited
+        self._warned_budget = False
         self._total_input_tokens = 0
         self._total_output_tokens = 0
         self._log_session_start(model)
@@ -121,6 +134,44 @@ class AuditLogger:
             "Tokens: %d in / %d out | Est. cost: $%.4f"
             % (self._total_input_tokens, self._total_output_tokens, cost)
         )
+
+    def check_budget(self) -> str:
+        """Check cost against budget. Returns 'ok', 'warning', or 'exceeded'."""
+        if self._budget is None:
+            return "ok"
+        cost = self.get_session_cost()
+        if cost >= self._budget:
+            self._write({
+                "event": "budget_exceeded",
+                "cost_usd": round(cost, 6),
+                "budget_usd": self._budget,
+            })
+            return "exceeded"
+        if not self._warned_budget and cost >= self._budget * 0.8:
+            self._warned_budget = True
+            self._write({
+                "event": "budget_warning",
+                "cost_usd": round(cost, 6),
+                "budget_usd": self._budget,
+            })
+            return "warning"
+        return "ok"
+
+    def log_compaction(
+        self, messages_removed: int, summary_tokens: int,
+    ) -> None:
+        self._write({
+            "event": "compaction",
+            "messages_removed": messages_removed,
+            "summary_tokens": summary_tokens,
+        })
+
+    def log_tool_cache_hit(self, tool_name: str, round_num: int) -> None:
+        self._write({
+            "event": "tool_cache_hit",
+            "round_num": round_num,
+            "tool_name": tool_name,
+        })
 
     def log_session_end(self) -> None:
         cost = self.get_session_cost()

@@ -50,6 +50,10 @@ def parse_args() -> argparse.Namespace:
                     help="Session name for conversation persistence")
     ap.add_argument("--list-sessions", action="store_true",
                     help="List saved sessions and exit")
+    ap.add_argument("--budget", type=float, default=1.0,
+                    help="Max session cost in USD (default: $1.00, 0 = unlimited)")
+    ap.add_argument("--compaction-threshold", type=int, default=80_000,
+                    help="Input-token threshold to trigger conversation compaction (default: 80000)")
     ap.add_argument("--debug", action="store_true",
                     help="Enable DEBUG logging")
     return ap.parse_args()
@@ -66,6 +70,7 @@ def main() -> None:
     logging.getLogger("httpx").setLevel(logging.WARNING)
     logging.getLogger("httpcore").setLevel(logging.WARNING)
 
+    budget = args.budget if args.budget > 0 else None  # 0 = unlimited
     config = DaisyConfig(
         api_key=args.api_key,
         model=args.model,
@@ -74,6 +79,8 @@ def main() -> None:
         log_dir=args.log_dir or DEFAULT_LOG_DIR,
         system_prompt=args.system,
         debug=args.debug,
+        budget=budget,
+        compaction_threshold=args.compaction_threshold,
     )
 
     # Handle --list-sessions early (no API key needed)
@@ -108,7 +115,7 @@ def main() -> None:
 
     audit = None
     try:
-        audit = AuditLogger(config.log_dir, config.model)
+        audit = AuditLogger(config.log_dir, config.model, budget=config.budget)
 
         if args.no_tools:
             registry = ToolRegistry()

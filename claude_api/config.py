@@ -67,6 +67,8 @@ class DaisyConfig:
         system_prompt: Optional[str] = None,
         debug: bool = False,
         api_key_file: str = DEFAULT_API_KEY_FILE,
+        budget: Optional[float] = None,
+        compaction_threshold: int = 80_000,
     ) -> None:
         # Priority: explicit arg > env var > key file
         # Use None-aware checks so empty strings don't break the chain.
@@ -85,3 +87,5 @@ class DaisyConfig:
         self.skills_dir = skills_dir
         self.system_prompt = system_prompt
         self.debug = debug
+        self.budget = budget
+        self.compaction_threshold = compaction_threshold
