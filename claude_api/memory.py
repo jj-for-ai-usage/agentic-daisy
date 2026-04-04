@@ -2,9 +2,13 @@
 from __future__ import annotations
 
 import json
+import logging
 import os
+import tempfile
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
+
+LOG = logging.getLogger("daisy")
 
 
 class MemoryStore:
@@ -18,15 +22,35 @@ class MemoryStore:
         self._load()
 
     def _load(self) -> None:
-        if os.path.exists(self.memory_file):
+        if not os.path.exists(self.memory_file):
+            self._memories = []
+            return
+        try:
             with open(self.memory_file, "r") as f:
                 self._memories = json.load(f)
-        else:
+        except (json.JSONDecodeError, ValueError) as exc:
+            LOG.warning(
+                "Corrupted memory file %s: %s — starting with empty memories",
+                self.memory_file, exc,
+            )
             self._memories = []
 
     def _save(self) -> None:
-        with open(self.memory_file, "w") as f:
-            json.dump(self._memories, f, indent=2, default=str)
+        # Atomic write: write to temp file, then rename (safe on POSIX)
+        fd, tmp_path = tempfile.mkstemp(
+            dir=self.memory_dir, suffix=".tmp", prefix=".memories-",
+        )
+        try:
+            with os.fdopen(fd, "w") as f:
+                json.dump(self._memories, f, indent=2, default=str)
+            os.replace(tmp_path, self.memory_file)
+        except BaseException:
+            # Clean up temp file if rename failed
+            try:
+                os.unlink(tmp_path)
+            except OSError:
+                pass
+            raise
 
     def _now_iso(self) -> str:
         return datetime.now(timezone.utc).isoformat()

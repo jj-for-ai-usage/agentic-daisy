@@ -72,16 +72,17 @@ def main() -> None:
         )
         sys.exit(1)
 
-    audit = AuditLogger(config.log_dir, config.model)
-
-    if args.no_tools:
-        registry = ToolRegistry()
-    else:
-        registry = create_default_registry(config)
-
-    conversation_history = []  # type: list
-
+    audit = None
     try:
+        audit = AuditLogger(config.log_dir, config.model)
+
+        if args.no_tools:
+            registry = ToolRegistry()
+        else:
+            registry = create_default_registry(config)
+
+        conversation_history = []  # type: list
+
         if args.interactive:
             _interactive_loop(config, registry, audit, conversation_history)
         elif args.message:
@@ -96,7 +97,8 @@ def main() -> None:
             )
             sys.exit(1)
     finally:
-        audit.log_session_end()
+        if audit is not None:
+            audit.log_session_end()
 
 
 def _interactive_loop(

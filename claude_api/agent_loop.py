@@ -109,7 +109,8 @@ def run_agent_loop(
 
             t_tool = time.time()
             try:
-                result_str = registry.execute(tool_name, tool_input)
+                raw_result = registry.execute(tool_name, tool_input)
+                result_str = raw_result if isinstance(raw_result, str) else str(raw_result or "")
                 is_error = False
             except KeyError:
                 result_str = "Error: unknown tool '%s'" % tool_name

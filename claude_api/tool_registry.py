@@ -1,6 +1,7 @@
 """Agentic Daisy — Tool registration and execution."""
 from __future__ import annotations
 
+import inspect
 from typing import Any, Callable, Dict, List, Optional
 
 
@@ -55,4 +56,13 @@ class ToolRegistry:
     def execute(self, name: str, input_args: Dict[str, Any]) -> str:
         """Execute a tool by name. Returns result as string."""
         tool_def = self._tools[name]
-        return tool_def.handler(**input_args)
+        # Filter to only params the handler accepts, so extra fields
+        # from Claude don't cause TypeError.
+        sig = inspect.signature(tool_def.handler)
+        params = sig.parameters
+        if any(p.kind == inspect.Parameter.VAR_KEYWORD for p in params.values()):
+            filtered = input_args  # handler accepts **kwargs
+        else:
+            accepted = {p.name for p in params.values()}
+            filtered = {k: v for k, v in input_args.items() if k in accepted}
+        return tool_def.handler(**filtered)
