@@ -173,6 +173,39 @@ class AuditLogger:
             "tool_name": tool_name,
         })
 
+    def log_batch_submit(
+        self, batch_id: str, request_count: int,
+        model: str, estimated_tokens: int,
+    ) -> None:
+        self._write({
+            "event": "batch_submit",
+            "batch_id": batch_id,
+            "request_count": request_count,
+            "model": model,
+            "estimated_input_tokens": estimated_tokens,
+        })
+
+    def log_batch_complete(
+        self, batch_id: str, model: str,
+        input_tokens: int, output_tokens: int,
+        succeeded: int, errored: int,
+    ) -> None:
+        pricing = self._PRICING.get(model, {"input": 3.0, "output": 15.0})
+        cost = (
+            input_tokens * pricing["input"] * 0.5 / 1_000_000
+            + output_tokens * pricing["output"] * 0.5 / 1_000_000
+        )
+        self._write({
+            "event": "batch_complete",
+            "batch_id": batch_id,
+            "model": model,
+            "input_tokens": input_tokens,
+            "output_tokens": output_tokens,
+            "succeeded": succeeded,
+            "errored": errored,
+            "cost_usd_50pct": round(cost, 6),
+        })
+
     def log_session_end(self) -> None:
         cost = self.get_session_cost()
         self._write({

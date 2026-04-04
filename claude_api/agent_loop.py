@@ -27,6 +27,7 @@ _CACHEABLE_TOOLS = frozenset({
     "read_file", "search_files", "find_files", "list_directory",
     "directory_tree", "search_memory", "list_memories", "get_env",
     "load_skill", "list_tasks", "get_task",
+    "check_batch", "get_batch_results",
 })
 
 

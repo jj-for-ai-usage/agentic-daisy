@@ -27,6 +27,9 @@ def load_all_tools(config: DaisyConfig, registry: ToolRegistry) -> None:
     # Task tools
     from .task import register as reg_task
     reg_task(config, registry)
+    # Batch tools
+    from .batch import register as reg_batch
+    reg_batch(config, registry)
     # Load custom tools from ~/.daisy/tools/ and .daisy/tools/
     CustomToolLoader([USER_TOOLS_DIR, DEFAULT_CUSTOM_TOOLS_DIR]).load_into(registry)
 

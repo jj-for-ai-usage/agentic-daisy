@@ -95,6 +95,22 @@ def build_default_system_prompt(registry: ToolRegistry, config: DaisyConfig = No
         "- Update task progress with notes after completing subtasks.\n"
         "- Mark tasks done when complete. Use get_task for full context.\n"
         "\n"
+        "### Batch Processing (50%% cost reduction)\n"
+        "When you identify multiple INDEPENDENT analyses that don't need each "
+        "other's results, use the Batch API for 50%% savings:\n"
+        "\n"
+        "**The batch workflow:**\n"
+        "1. FIRST: Use run_command/run_python to extract and preprocess data\n"
+        "   - Do NOT put raw log files into batch prompts\n"
+        "   - grep/awk/python to extract just the relevant metrics\n"
+        "   - Each batch prompt should be <2KB of preprocessed data\n"
+        "2. Build focused prompts: minimal system prompt + pre-extracted data + question\n"
+        "3. Submit with submit_batch — tracks via task automatically\n"
+        "4. Tell the user results will be ready within 24 hours\n"
+        "5. Next session: check_batch, then get_batch_results\n"
+        "\n"
+        "Batch prompts have NO tool access. Preprocess everything first.\n"
+        "\n"
         "### CORE PRINCIPLE: Minimize Token Cost\n"
         "Every token you consume costs real money. The user is paying per "
         "token. Before EVERY tool call, think: what is the smallest amount "
@@ -192,6 +208,27 @@ def build_default_system_prompt(registry: ToolRegistry, config: DaisyConfig = No
                 prompt += "\n".join(lines) + "\n"
         except Exception:
             pass  # Don't break startup if task store has issues
+
+    # Inject pending batches summary
+    if config is not None:
+        try:
+            from .batch_store import BatchStore
+            bs = BatchStore(config.batch_dir)
+            pending = bs.get_pending_batches()
+            if pending:
+                lines = ["\n## Pending Batches (%d)" % len(pending)]
+                for b in pending:
+                    lines.append(
+                        "- [%s] %d requests, task: %s, expires: %s"
+                        % (b["id"], b["request_count"],
+                           b.get("task_id", "?"), b.get("expires_at", "?"))
+                    )
+                lines.append(
+                    "\nCall check_batch() to poll status and retrieve results."
+                )
+                prompt += "\n".join(lines) + "\n"
+        except Exception:
+            pass
 
     return prompt
 

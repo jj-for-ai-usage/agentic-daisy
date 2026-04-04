@@ -20,6 +20,7 @@ DEFAULT_SESSION_DIR = os.path.join(_PROJECT_ROOT, ".daisy", "sessions")
 DEFAULT_WORKSPACE_DIR = os.path.join(_PROJECT_ROOT, ".daisy", "workspace")
 DEFAULT_SKILLS_DIR = os.path.join(_PROJECT_ROOT, ".daisy", "skills")
 DEFAULT_TASK_DIR = os.path.join(_PROJECT_ROOT, ".daisy", "tasks")
+DEFAULT_BATCH_DIR = os.path.join(_PROJECT_ROOT, ".daisy", "batches")
 
 # User-level persistent dirs (shared across projects, next to ~/.daisy/api_key)
 _USER_HOME = os.path.expanduser("~/.daisy")
@@ -66,6 +67,7 @@ class DaisyConfig:
         workspace_dir: str = DEFAULT_WORKSPACE_DIR,
         skills_dir: str = DEFAULT_SKILLS_DIR,
         task_dir: str = DEFAULT_TASK_DIR,
+        batch_dir: str = DEFAULT_BATCH_DIR,
         system_prompt: Optional[str] = None,
         debug: bool = False,
         api_key_file: str = DEFAULT_API_KEY_FILE,
@@ -88,6 +90,7 @@ class DaisyConfig:
         self.workspace_dir = workspace_dir
         self.skills_dir = skills_dir
         self.task_dir = task_dir
+        self.batch_dir = batch_dir
         self.system_prompt = system_prompt
         self.debug = debug
         self.budget = budget

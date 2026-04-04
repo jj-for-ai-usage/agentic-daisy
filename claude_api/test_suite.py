@@ -84,6 +84,7 @@ def test_imports():
     from claude_api.session import SessionManager
     from claude_api.compaction import ConversationCompactor
     from claude_api.task_store import TaskStore
+    from claude_api.batch_store import BatchStore
     from claude_api.cli import parse_args
     import anthropic
     assert anthropic.__version__, "Anthropic SDK version not found"
@@ -493,11 +494,14 @@ def test_session_sanitize():
         shutil.rmtree(d)
 
 
-@test("Built-in tools: all 20 registered")
+@test("Built-in tools: all 23 registered")
 def test_builtin_tools():
     from claude_api.built_in_tools import create_default_registry
     from claude_api.config import DaisyConfig
-    config = DaisyConfig(memory_dir=tempfile.mkdtemp(), task_dir=tempfile.mkdtemp())
+    config = DaisyConfig(
+        memory_dir=tempfile.mkdtemp(), task_dir=tempfile.mkdtemp(),
+        batch_dir=tempfile.mkdtemp(),
+    )
     reg = create_default_registry(config)
     tools = reg.list_tool_summaries()
     names = {t["name"] for t in tools}
@@ -507,6 +511,7 @@ def test_builtin_tools():
         "list_directory", "search_files", "find_files", "directory_tree",
         "get_env", "load_skill", "create_skill", "create_tool",
         "create_task", "update_task", "list_tasks", "get_task",
+        "submit_batch", "check_batch", "get_batch_results",
     }
     assert names == expected, "Missing: %s  Extra: %s" % (expected - names, names - expected)
 
@@ -616,6 +621,136 @@ def test_task_persistence():
         r = json.loads(store2.get_task(task_id))
         assert "task" in r
         assert r["task"]["name"] == "Persistent task"
+    finally:
+        shutil.rmtree(d)
+
+
+@test("BatchStore: create + list + get + result save/read")
+def test_batch_store():
+    from claude_api.batch_store import BatchStore
+    d = tempfile.mkdtemp()
+    try:
+        store = BatchStore(d)
+        # Create
+        manifest = [
+            {"custom_id": "task_001__0", "label": "block_A analysis"},
+            {"custom_id": "task_001__1", "label": "block_B analysis"},
+        ]
+        r = json.loads(store.create_batch(
+            task_id="task_001", model="claude-haiku-4-5",
+            manifest=manifest, batch_api_id="msgbatch_test123",
+            expires_at="2026-04-05T10:00:00Z",
+            estimated_input_tokens=2000,
+        ))
+        assert r["status"] == "created"
+        batch_id = r["batch_id"]
+        assert batch_id.startswith("batch_")
+
+        # List
+        r = json.loads(store.list_batches())
+        assert r["count"] == 1
+        assert r["batches"][0]["request_count"] == 2
+
+        # Get
+        r = json.loads(store.get_batch(batch_id))
+        assert "batch" in r
+        assert r["batch"]["batch_api_id"] == "msgbatch_test123"
+        assert r["batch"]["status"] == "processing"
+
+        # Pending
+        pending = store.get_pending_batches()
+        assert len(pending) == 1
+
+        # Update
+        r = json.loads(store.update_batch(batch_id, status="results_retrieved"))
+        assert r["batch"]["status"] == "results_retrieved"
+        assert len(store.get_pending_batches()) == 0
+
+        # Save results
+        store.save_result(batch_id, "task_001__0", "Analysis for block A...", "succeeded")
+        store.save_result(batch_id, "task_001__1", "Analysis for block B...", "succeeded")
+
+        # Read results
+        r = json.loads(store.read_result(batch_id, "task_001__0"))
+        assert r["text"] == "Analysis for block A..."
+        assert r["status"] == "succeeded"
+
+        # Read non-existent
+        r = json.loads(store.read_result(batch_id, "task_001__99"))
+        assert "error" in r
+    finally:
+        shutil.rmtree(d)
+
+
+@test("BatchStore: corruption recovery")
+def test_batch_corruption():
+    d = tempfile.mkdtemp()
+    try:
+        batch_file = os.path.join(d, "batches.json")
+        with open(batch_file, "w") as f:
+            f.write("{broken")
+        logging.getLogger("daisy").setLevel(logging.CRITICAL)
+        from claude_api.batch_store import BatchStore
+        store = BatchStore(d)
+        logging.getLogger("daisy").setLevel(logging.WARNING)
+        assert len(store._batches) == 0, "Should recover to empty"
+    finally:
+        shutil.rmtree(d)
+
+
+@test("BatchStore: persistence across instances")
+def test_batch_persistence():
+    from claude_api.batch_store import BatchStore
+    d = tempfile.mkdtemp()
+    try:
+        store1 = BatchStore(d)
+        store1.create_batch(
+            task_id="t1", model="haiku", manifest=[{"custom_id": "t1__0", "label": "x"}],
+            batch_api_id="msgbatch_abc", expires_at="2026-04-05",
+        )
+        store2 = BatchStore(d)
+        r = json.loads(store2.list_batches())
+        assert r["count"] == 1
+    finally:
+        shutil.rmtree(d)
+
+
+@test("get_batch_results: index filtering and summary_only")
+def test_get_batch_results_tool():
+    from claude_api.batch_store import BatchStore
+    d = tempfile.mkdtemp()
+    try:
+        store = BatchStore(d)
+        manifest = [
+            {"custom_id": "t__0", "label": "first"},
+            {"custom_id": "t__1", "label": "second"},
+        ]
+        r = json.loads(store.create_batch(
+            task_id="t", model="haiku", manifest=manifest,
+            batch_api_id="msg_test", expires_at="2026-04-05",
+        ))
+        bid = r["batch_id"]
+        store.update_batch(bid, status="results_retrieved")
+        store.save_result(bid, "t__0", "A" * 500, "succeeded")
+        store.save_result(bid, "t__1", "B" * 500, "succeeded")
+
+        # Import and call handler directly
+        from claude_api.tools.batch.get_batch_results import make_handler
+        handler = make_handler(batch_store=store)
+
+        # All results
+        r = json.loads(handler(batch_id=bid))
+        assert r["count"] == 2
+        assert len(r["results"][0]["text"]) == 500
+
+        # Single index
+        r = json.loads(handler(batch_id=bid, index=1))
+        assert r["count"] == 1
+        assert r["results"][0]["label"] == "second"
+
+        # Summary only
+        r = json.loads(handler(batch_id=bid, summary_only=True))
+        assert len(r["results"][0]["text"]) == 203  # 200 + "..."
     finally:
         shutil.rmtree(d)
 
@@ -893,6 +1028,10 @@ OFFLINE_TESTS = [
     test_task_lifecycle,
     test_task_corruption,
     test_task_persistence,
+    test_batch_store,
+    test_batch_corruption,
+    test_batch_persistence,
+    test_get_batch_results_tool,
     test_admin_hidden,
     test_cli_help,
     test_cli_list_sessions,
@@ -915,6 +1054,8 @@ QUICK_TESTS = [
     test_tool_cache,
     test_compaction,
     test_task_lifecycle,
+    test_batch_store,
+    test_get_batch_results_tool,
     test_admin_hidden,
     test_cli_help,
 ]
