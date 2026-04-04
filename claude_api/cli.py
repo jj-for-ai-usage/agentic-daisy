@@ -111,64 +111,12 @@ def main() -> None:
             registry = ToolRegistry()
         else:
             registry = create_default_registry(config)
-            # Register shell tool (needs audit + interactive context)
             if not args.no_shell:
-                from .shell_tool import make_run_command, make_run_python
-                registry.register(
-                    name="run_command",
-                    description=(
-                        "Execute a shell command on the server and return "
-                        "stdout, stderr, and exit code."
-                    ),
-                    input_schema={
-                        "type": "object",
-                        "properties": {
-                            "command": {
-                                "type": "string",
-                                "description": (
-                                    "Shell command to execute (via /bin/sh -c)"
-                                ),
-                            },
-                            "timeout": {
-                                "type": "integer",
-                                "description": (
-                                    "Timeout in seconds (default: 30, max: 300)"
-                                ),
-                            },
-                        },
-                        "required": ["command"],
-                    },
-                    handler=make_run_command(
-                        audit, interactive=args.interactive,
-                    ),
-                )
-                registry.register(
-                    name="run_python",
-                    description=(
-                        "Execute a Python script and return stdout, stderr, "
-                        "and exit code. Use for multi-line data processing, "
-                        "log analysis, config parsing, or any complex logic."
-                    ),
-                    input_schema={
-                        "type": "object",
-                        "properties": {
-                            "code": {
-                                "type": "string",
-                                "description": "Python code to execute",
-                            },
-                            "timeout": {
-                                "type": "integer",
-                                "description": (
-                                    "Timeout in seconds (default: 60, max: 300)"
-                                ),
-                            },
-                        },
-                        "required": ["code"],
-                    },
-                    handler=make_run_python(
-                        audit, interactive=args.interactive,
-                        workspace_dir=config.workspace_dir,
-                    ),
+                from .tools import load_execution_tools
+                load_execution_tools(
+                    config, registry, audit,
+                    interactive=args.interactive,
+                    workspace_dir=config.workspace_dir,
                 )
 
         # Set default system prompt if user didn't provide one

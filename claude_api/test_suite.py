@@ -70,11 +70,17 @@ def test_imports():
     from claude_api.memory import MemoryStore
     from claude_api.built_in_tools import create_default_registry, build_default_system_prompt
     from claude_api.agent_loop import run_agent_loop, _call_api_with_retry
-    from claude_api.file_tools import (
-        read_file, write_file, list_directory,
-        search_files, find_files, directory_tree,
-    )
-    from claude_api.shell_tool import make_run_command, make_run_python, _safe_env
+    from claude_api.tools.file.read_file import handler as _rf
+    from claude_api.tools.file.write_file import handler as _wf
+    from claude_api.tools.file.edit_file import handler as _ef
+    from claude_api.tools.file.append_file import handler as _af
+    from claude_api.tools.search.search_files import handler as _sf
+    from claude_api.tools.search.find_files import handler as _ff
+    from claude_api.tools.search.directory_tree import handler as _dt
+    from claude_api.tools.search.list_directory import handler as _ld
+    from claude_api.tools.system.get_env import handler as _ge
+    from claude_api.tools.execution.run_command import make_handler as _rc
+    from claude_api.tools.execution.run_python import make_handler as _rp
     from claude_api.session import SessionManager
     from claude_api.cli import parse_args
     import anthropic
@@ -245,7 +251,9 @@ def test_audit_permissions():
 
 @test("File tools: read + write + list")
 def test_file_tools():
-    from claude_api.file_tools import read_file, write_file, list_directory
+    from claude_api.tools.file.read_file import handler as read_file
+    from claude_api.tools.file.write_file import handler as write_file
+    from claude_api.tools.search.list_directory import handler as list_directory
     d = tempfile.mkdtemp()
     try:
         # Write
@@ -266,14 +274,14 @@ def test_file_tools():
 
 @test("File tools: read non-existent file")
 def test_file_tools_error():
-    from claude_api.file_tools import read_file
+    from claude_api.tools.file.read_file import handler as read_file
     r = json.loads(read_file("/tmp/daisy_nonexistent_file_12345"))
     assert "error" in r
 
 
 @test("File tools: search_files (regex)")
 def test_search_files():
-    from claude_api.file_tools import search_files
+    from claude_api.tools.search.search_files import handler as search_files
     r = json.loads(search_files(
         "def run_agent_loop",
         os.path.join(os.path.dirname(__file__)),
@@ -284,7 +292,7 @@ def test_search_files():
 
 @test("File tools: search_files with include filter")
 def test_search_files_filter():
-    from claude_api.file_tools import search_files
+    from claude_api.tools.search.search_files import handler as search_files
     r = json.loads(search_files(
         "import json",
         os.path.join(os.path.dirname(__file__)),
@@ -295,7 +303,7 @@ def test_search_files_filter():
 
 @test("File tools: search_files with context lines")
 def test_search_files_context():
-    from claude_api.file_tools import search_files
+    from claude_api.tools.search.search_files import handler as search_files
     r = json.loads(search_files(
         "MAX_TOOL_ROUNDS",
         os.path.join(os.path.dirname(__file__)),
@@ -308,21 +316,21 @@ def test_search_files_context():
 
 @test("File tools: search_files invalid regex")
 def test_search_files_bad_regex():
-    from claude_api.file_tools import search_files
+    from claude_api.tools.search.search_files import handler as search_files
     r = json.loads(search_files("[invalid", "/tmp"))
     assert "error" in r
 
 
 @test("File tools: find_files (glob)")
 def test_find_files():
-    from claude_api.file_tools import find_files
+    from claude_api.tools.search.find_files import handler as find_files
     r = json.loads(find_files("*.py", os.path.dirname(__file__)))
     assert r["count"] >= 10, "Should find at least 10 .py files, got %d" % r["count"]
 
 
 @test("File tools: directory_tree")
 def test_directory_tree():
-    from claude_api.file_tools import directory_tree
+    from claude_api.tools.search.directory_tree import handler as directory_tree
     project_root = os.path.dirname(os.path.dirname(__file__))
     r = json.loads(directory_tree(project_root, max_depth=2))
     names = [e["name"] for e in r["tree"]]
@@ -333,9 +341,9 @@ def test_directory_tree():
 @test("Shell tool: run_command")
 def test_run_command():
     from claude_api.audit import AuditLogger
-    from claude_api.shell_tool import make_run_command
+    from claude_api.tools.execution.run_command import make_handler as make_run_command
     audit = AuditLogger(tempfile.mkdtemp(), "test")
-    handler = make_run_command(audit, interactive=False)
+    handler = make_run_command(audit=audit, interactive=False)
     r = json.loads(handler(command="echo hello"))
     assert r["exit_code"] == 0
     assert "hello" in r["stdout"]
@@ -344,9 +352,9 @@ def test_run_command():
 @test("Shell tool: run_command timeout")
 def test_run_command_timeout():
     from claude_api.audit import AuditLogger
-    from claude_api.shell_tool import make_run_command
+    from claude_api.tools.execution.run_command import make_handler as make_run_command
     audit = AuditLogger(tempfile.mkdtemp(), "test")
-    handler = make_run_command(audit, interactive=False)
+    handler = make_run_command(audit=audit, interactive=False)
     r = json.loads(handler(command="sleep 10", timeout=2))
     assert r["timed_out"] is True
     assert r["exit_code"] == -1
@@ -355,9 +363,9 @@ def test_run_command_timeout():
 @test("Shell tool: run_python")
 def test_run_python():
     from claude_api.audit import AuditLogger
-    from claude_api.shell_tool import make_run_python
+    from claude_api.tools.execution.run_python import make_handler as make_run_python
     audit = AuditLogger(tempfile.mkdtemp(), "test")
-    handler = make_run_python(audit, interactive=False)
+    handler = make_run_python(audit=audit, interactive=False)
     r = json.loads(handler(code="print(2 + 2)"))
     assert r["exit_code"] == 0
     assert "4" in r["stdout"]
@@ -366,9 +374,9 @@ def test_run_python():
 @test("Shell tool: run_python error handling")
 def test_run_python_error():
     from claude_api.audit import AuditLogger
-    from claude_api.shell_tool import make_run_python
+    from claude_api.tools.execution.run_python import make_handler as make_run_python
     audit = AuditLogger(tempfile.mkdtemp(), "test")
-    handler = make_run_python(audit, interactive=False)
+    handler = make_run_python(audit=audit, interactive=False)
     r = json.loads(handler(code="raise ValueError('boom')"))
     assert r["exit_code"] != 0
     assert "ValueError" in r["stderr"]
@@ -377,16 +385,16 @@ def test_run_python_error():
 @test("Shell tool: run_python timeout")
 def test_run_python_timeout():
     from claude_api.audit import AuditLogger
-    from claude_api.shell_tool import make_run_python
+    from claude_api.tools.execution.run_python import make_handler as make_run_python
     audit = AuditLogger(tempfile.mkdtemp(), "test")
-    handler = make_run_python(audit, interactive=False)
+    handler = make_run_python(audit=audit, interactive=False)
     r = json.loads(handler(code="import time; time.sleep(10)", timeout=2))
     assert r["timed_out"] is True
 
 
 @test("Shell tool: API key NOT in subprocess env")
 def test_api_key_scrubbed():
-    from claude_api.shell_tool import _safe_env
+    from claude_api.tools.execution.run_command import _safe_env
     # Save and restore the real key so we don't clobber it for online tests
     original_key = os.environ.get("ANTHROPIC_API_KEY")
     try:
@@ -396,9 +404,9 @@ def test_api_key_scrubbed():
         assert "PATH" in env, "PATH should be preserved"
         # Also verify via actual subprocess
         from claude_api.audit import AuditLogger
-        from claude_api.shell_tool import make_run_python
+        from claude_api.tools.execution.run_python import make_handler as make_run_python
         audit = AuditLogger(tempfile.mkdtemp(), "test")
-        handler = make_run_python(audit, interactive=False)
+        handler = make_run_python(audit=audit, interactive=False)
         r = json.loads(handler(code=(
             "import os; print(os.environ.get('ANTHROPIC_API_KEY', 'NOT_FOUND'))"
         )))
