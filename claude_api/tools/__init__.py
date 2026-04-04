@@ -24,6 +24,9 @@ def load_all_tools(config: DaisyConfig, registry: ToolRegistry) -> None:
     # System tools get a SkillLoader (user-level first, project overrides)
     skill_loader = SkillLoader([USER_SKILLS_DIR, config.skills_dir])
     reg_system(config, registry, skill_loader=skill_loader)
+    # Task tools
+    from .task import register as reg_task
+    reg_task(config, registry)
     # Load custom tools from ~/.daisy/tools/ and .daisy/tools/
     CustomToolLoader([USER_TOOLS_DIR, DEFAULT_CUSTOM_TOOLS_DIR]).load_into(registry)
 

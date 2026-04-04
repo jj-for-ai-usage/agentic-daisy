@@ -56,6 +56,8 @@ def parse_args() -> argparse.Namespace:
                     help="Input-token threshold to trigger conversation compaction (default: 80000)")
     ap.add_argument("--debug", action="store_true",
                     help="Enable DEBUG logging")
+    ap.add_argument("--admin", action="store_true", default=False,
+                    help=argparse.SUPPRESS)
     return ap.parse_args()
 
 
@@ -125,7 +127,7 @@ def main() -> None:
                 from .tools import load_execution_tools
                 load_execution_tools(
                     config, registry, audit,
-                    interactive=args.interactive,
+                    interactive=args.interactive and not args.admin,
                     workspace_dir=config.workspace_dir,
                 )
 

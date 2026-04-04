@@ -83,6 +83,7 @@ def test_imports():
     from claude_api.tools.execution.run_python import make_handler as _rp
     from claude_api.session import SessionManager
     from claude_api.compaction import ConversationCompactor
+    from claude_api.task_store import TaskStore
     from claude_api.cli import parse_args
     import anthropic
     assert anthropic.__version__, "Anthropic SDK version not found"
@@ -492,11 +493,11 @@ def test_session_sanitize():
         shutil.rmtree(d)
 
 
-@test("Built-in tools: all 16 registered")
+@test("Built-in tools: all 20 registered")
 def test_builtin_tools():
     from claude_api.built_in_tools import create_default_registry
     from claude_api.config import DaisyConfig
-    config = DaisyConfig(memory_dir=tempfile.mkdtemp())
+    config = DaisyConfig(memory_dir=tempfile.mkdtemp(), task_dir=tempfile.mkdtemp())
     reg = create_default_registry(config)
     tools = reg.list_tool_summaries()
     names = {t["name"] for t in tools}
@@ -505,6 +506,7 @@ def test_builtin_tools():
         "read_file", "write_file", "edit_file", "append_file",
         "list_directory", "search_files", "find_files", "directory_tree",
         "get_env", "load_skill", "create_skill", "create_tool",
+        "create_task", "update_task", "list_tasks", "get_task",
     }
     assert names == expected, "Missing: %s  Extra: %s" % (expected - names, names - expected)
 
@@ -522,6 +524,113 @@ def test_system_prompt():
     assert "save_memory" in prompt
     assert "search_files" in prompt
     assert "directory_tree" in prompt
+
+
+@test("TaskStore: create + list + get + update lifecycle")
+def test_task_lifecycle():
+    from claude_api.task_store import TaskStore
+    d = tempfile.mkdtemp()
+    try:
+        store = TaskStore(d)
+        # Create
+        r = json.loads(store.create_task(
+            name="Fix timing",
+            description="Close WNS on block_x",
+            priority="high",
+            tags=["timing", "block_x"],
+            subtasks=[
+                {"name": "Run synthesis"},
+                {"name": "Add exceptions"},
+                {"name": "Verify"},
+            ],
+            context="genus.log at /proj/syn/",
+        ))
+        assert r["status"] == "created"
+        task_id = r["task_id"]
+        assert task_id.startswith("task_")
+        # List
+        r = json.loads(store.list_tasks())
+        assert r["count"] == 1
+        assert r["tasks"][0]["name"] == "Fix timing"
+        assert r["tasks"][0]["subtasks"] == "0/3 done"
+        # List with filter
+        r = json.loads(store.list_tasks(status="done"))
+        assert r["count"] == 0
+        r = json.loads(store.list_tasks(tag="timing"))
+        assert r["count"] == 1
+        # Get
+        r = json.loads(store.get_task(task_id))
+        assert "task" in r
+        assert len(r["task"]["subtasks"]) == 3
+        assert r["task"]["context"] == "genus.log at /proj/syn/"
+        # Update status
+        r = json.loads(store.update_task(task_id, status="paused"))
+        assert r["status"] == "updated"
+        assert r["task"]["status"] == "paused"
+        # Update subtask
+        r = json.loads(store.update_task(task_id, update_subtask={"index": 0, "status": "done", "notes": "WNS: -0.3ns"}))
+        assert r["task"]["subtasks"][0]["status"] == "done"
+        assert r["task"]["subtasks"][0]["notes"] == "WNS: -0.3ns"
+        # Add subtask
+        r = json.loads(store.update_task(task_id, add_subtask={"name": "Final review"}))
+        assert len(r["task"]["subtasks"]) == 4
+        # Append notes
+        r = json.loads(store.update_task(task_id, notes="Tried multicycle paths"))
+        assert "Tried multicycle paths" in r["task"]["context"]
+        # Mark done
+        r = json.loads(store.update_task(task_id, status="done"))
+        assert r["task"]["status"] == "done"
+        # Get non-existent
+        r = json.loads(store.get_task("task_nonexistent"))
+        assert "error" in r
+    finally:
+        shutil.rmtree(d)
+
+
+@test("TaskStore: corruption recovery")
+def test_task_corruption():
+    d = tempfile.mkdtemp()
+    try:
+        task_file = os.path.join(d, "tasks.json")
+        with open(task_file, "w") as f:
+            f.write("{broken")
+        logging.getLogger("daisy").setLevel(logging.CRITICAL)
+        from claude_api.task_store import TaskStore
+        store = TaskStore(d)
+        logging.getLogger("daisy").setLevel(logging.WARNING)
+        assert len(store._tasks) == 0, "Should recover to empty"
+    finally:
+        shutil.rmtree(d)
+
+
+@test("TaskStore: persistence across instances")
+def test_task_persistence():
+    from claude_api.task_store import TaskStore
+    d = tempfile.mkdtemp()
+    try:
+        store1 = TaskStore(d)
+        r = json.loads(store1.create_task(name="Persistent task"))
+        task_id = r["task_id"]
+        # New instance should load from disk
+        store2 = TaskStore(d)
+        r = json.loads(store2.get_task(task_id))
+        assert "task" in r
+        assert r["task"]["name"] == "Persistent task"
+    finally:
+        shutil.rmtree(d)
+
+
+@test("Admin flag: hidden from --help")
+def test_admin_hidden():
+    import subprocess
+    project_root = os.path.dirname(os.path.dirname(__file__))
+    env = os.environ.copy()
+    env["DAISY_PYTHON"] = sys.executable
+    result = subprocess.run(
+        [os.path.join(project_root, "bin", "daisy"), "--help"],
+        capture_output=True, text=True, env=env,
+    )
+    assert "--admin" not in result.stdout, "--admin should be hidden from --help"
 
 
 @test("CLI: --help exits 0")
@@ -781,6 +890,10 @@ OFFLINE_TESTS = [
     test_tool_cache,
     test_compaction,
     test_compaction_tool_blocks,
+    test_task_lifecycle,
+    test_task_corruption,
+    test_task_persistence,
+    test_admin_hidden,
     test_cli_help,
     test_cli_list_sessions,
 ]
@@ -801,6 +914,8 @@ QUICK_TESTS = [
     test_budget,
     test_tool_cache,
     test_compaction,
+    test_task_lifecycle,
+    test_admin_hidden,
     test_cli_help,
 ]
 
