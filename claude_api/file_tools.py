@@ -1,11 +1,16 @@
-"""Agentic Daisy — File read/write/list tools."""
+"""Agentic Daisy — File read/write/list/search/find tools."""
 from __future__ import annotations
 
+import fnmatch
 import json
 import os
-from typing import Optional
+import re
+from typing import List, Optional
 
 MAX_READ_SIZE = 100_000  # characters
+MAX_SEARCH_RESULTS = 200  # matches returned by search_files
+MAX_FIND_RESULTS = 500  # files returned by find_files
+MAX_TREE_DEPTH = 5  # levels for recursive list_directory
 
 
 def read_file(path: str) -> str:
@@ -68,5 +73,151 @@ def list_directory(path: str = ".") -> str:
             "count": len(entries),
             "entries": entries,
         })
+    except Exception as exc:
+        return json.dumps({"error": str(exc), "path": path})
+
+
+def search_files(
+    pattern: str,
+    path: str = ".",
+    include: str = "",
+    context_lines: int = 0,
+) -> str:
+    """Search file contents by regex pattern. Returns structured matches."""
+    path = os.path.expanduser(path)
+    try:
+        regex = re.compile(pattern)
+    except re.error as exc:
+        return json.dumps({"error": "Invalid regex: %s" % exc, "pattern": pattern})
+
+    results = []  # type: List[dict]
+    files_searched = 0
+
+    try:
+        for dirpath, dirnames, filenames in os.walk(path):
+            # Skip hidden dirs and common noise
+            dirnames[:] = [
+                d for d in dirnames
+                if not d.startswith(".") and d not in ("__pycache__", "node_modules", ".git")
+            ]
+            for fname in sorted(filenames):
+                # Optional glob filter on filename
+                if include and not fnmatch.fnmatch(fname, include):
+                    continue
+                fpath = os.path.join(dirpath, fname)
+                # Skip binary / large files
+                try:
+                    size = os.path.getsize(fpath)
+                    if size > 1_000_000:  # skip files > 1MB
+                        continue
+                except OSError:
+                    continue
+
+                try:
+                    with open(fpath, "r", errors="ignore") as f:
+                        file_lines = f.readlines()
+                except (OSError, UnicodeDecodeError):
+                    continue
+
+                files_searched += 1
+                for i, line in enumerate(file_lines):
+                    if regex.search(line):
+                        match = {
+                            "file": fpath,
+                            "line_number": i + 1,
+                            "line": line.rstrip("\n"),
+                        }
+                        if context_lines > 0:
+                            start = max(0, i - context_lines)
+                            end = min(len(file_lines), i + context_lines + 1)
+                            match["context"] = [
+                                ln.rstrip("\n") for ln in file_lines[start:end]
+                            ]
+                        results.append(match)
+                        if len(results) >= MAX_SEARCH_RESULTS:
+                            return json.dumps({
+                                "pattern": pattern,
+                                "matches": len(results),
+                                "truncated": True,
+                                "files_searched": files_searched,
+                                "results": results,
+                            })
+
+        return json.dumps({
+            "pattern": pattern,
+            "matches": len(results),
+            "truncated": False,
+            "files_searched": files_searched,
+            "results": results,
+        })
+    except Exception as exc:
+        return json.dumps({"error": str(exc), "pattern": pattern, "path": path})
+
+
+def find_files(pattern: str, path: str = ".") -> str:
+    """Find files by glob pattern (e.g. '*.py', '*.conf'). Recursive."""
+    path = os.path.expanduser(path)
+    results = []  # type: List[str]
+
+    try:
+        for dirpath, dirnames, filenames in os.walk(path):
+            dirnames[:] = [
+                d for d in dirnames
+                if not d.startswith(".") and d not in ("__pycache__", "node_modules", ".git")
+            ]
+            for fname in sorted(filenames):
+                if fnmatch.fnmatch(fname, pattern):
+                    results.append(os.path.join(dirpath, fname))
+                    if len(results) >= MAX_FIND_RESULTS:
+                        return json.dumps({
+                            "pattern": pattern,
+                            "path": path,
+                            "count": len(results),
+                            "truncated": True,
+                            "files": results,
+                        })
+
+        return json.dumps({
+            "pattern": pattern,
+            "path": path,
+            "count": len(results),
+            "truncated": False,
+            "files": results,
+        })
+    except Exception as exc:
+        return json.dumps({"error": str(exc), "pattern": pattern, "path": path})
+
+
+def directory_tree(path: str = ".", max_depth: int = 3) -> str:
+    """Recursive directory tree with depth limit."""
+    path = os.path.expanduser(path)
+    max_depth = max(1, min(max_depth, MAX_TREE_DEPTH))
+
+    def _walk(current: str, depth: int) -> list:
+        if depth > max_depth:
+            return []
+        try:
+            items = []
+            for name in sorted(os.listdir(current)):
+                if name.startswith(".") or name in ("__pycache__", "node_modules"):
+                    continue
+                full = os.path.join(current, name)
+                if os.path.isdir(full):
+                    children = _walk(full, depth + 1)
+                    items.append({"name": name, "type": "dir", "children": children})
+                else:
+                    entry = {"name": name, "type": "file"}
+                    try:
+                        entry["size"] = os.path.getsize(full)
+                    except OSError:
+                        pass
+                    items.append(entry)
+            return items
+        except OSError:
+            return []
+
+    try:
+        tree = _walk(path, 1)
+        return json.dumps({"path": path, "max_depth": max_depth, "tree": tree})
     except Exception as exc:
         return json.dumps({"error": str(exc), "path": path})

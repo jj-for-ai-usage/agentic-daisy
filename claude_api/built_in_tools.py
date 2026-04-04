@@ -2,7 +2,10 @@
 from __future__ import annotations
 
 from .config import DaisyConfig
-from .file_tools import list_directory, read_file, write_file
+from .file_tools import (
+    directory_tree, find_files, list_directory, read_file, search_files,
+    write_file,
+)
 from .memory import MemoryStore
 from .tool_registry import ToolRegistry
 
@@ -178,6 +181,96 @@ def create_default_registry(config: DaisyConfig) -> ToolRegistry:
             },
         },
         handler=list_directory,
+    )
+
+    registry.register(
+        name="search_files",
+        description=(
+            "Search file contents by regex pattern. Returns matching lines "
+            "with file paths and line numbers. Walks directories recursively."
+        ),
+        input_schema={
+            "type": "object",
+            "properties": {
+                "pattern": {
+                    "type": "string",
+                    "description": "Regex pattern to search for in file contents",
+                },
+                "path": {
+                    "type": "string",
+                    "description": (
+                        "Directory to search in (default: current directory)"
+                    ),
+                },
+                "include": {
+                    "type": "string",
+                    "description": (
+                        "Glob pattern to filter filenames (e.g. '*.py', '*.conf')"
+                    ),
+                },
+                "context_lines": {
+                    "type": "integer",
+                    "description": (
+                        "Number of lines of context around each match (default: 0)"
+                    ),
+                },
+            },
+            "required": ["pattern"],
+        },
+        handler=search_files,
+    )
+
+    registry.register(
+        name="find_files",
+        description=(
+            "Find files by name using a glob pattern. "
+            "Recursively walks directories."
+        ),
+        input_schema={
+            "type": "object",
+            "properties": {
+                "pattern": {
+                    "type": "string",
+                    "description": (
+                        "Glob pattern to match filenames (e.g. '*.py', '*.log')"
+                    ),
+                },
+                "path": {
+                    "type": "string",
+                    "description": (
+                        "Directory to search in (default: current directory)"
+                    ),
+                },
+            },
+            "required": ["pattern"],
+        },
+        handler=find_files,
+    )
+
+    registry.register(
+        name="directory_tree",
+        description=(
+            "Show a recursive directory tree with depth limit. "
+            "Good for understanding project structure."
+        ),
+        input_schema={
+            "type": "object",
+            "properties": {
+                "path": {
+                    "type": "string",
+                    "description": (
+                        "Root directory for the tree (default: current directory)"
+                    ),
+                },
+                "max_depth": {
+                    "type": "integer",
+                    "description": (
+                        "Maximum depth to recurse (default: 3, max: 5)"
+                    ),
+                },
+            },
+        },
+        handler=directory_tree,
     )
 
     return registry
