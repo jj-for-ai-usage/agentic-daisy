@@ -1,0 +1,8 @@
+__pycache__/
+*.py[cod]
+*.so
+vendor/lib/
+!vendor/wheels/
+.anthropic_key
+._*
+*.tar.gz

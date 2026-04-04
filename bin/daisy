@@ -1,0 +1,22 @@
+#!/bin/bash
+# Agentic Daisy — main launcher
+# Usage:
+#   bin/daisy "Hello Claude"
+#   bin/daisy --interactive
+#   bin/daisy --api-key 'sk-ant-...' "What time is it?"
+#
+# Run once first:  bash vendor/install.sh
+
+set -e
+
+DAISY_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+VENDOR_LIB="$DAISY_ROOT/vendor/lib"
+
+if [ ! -d "$VENDOR_LIB" ] || [ -z "$(ls "$VENDOR_LIB"/ 2>/dev/null)" ]; then
+    echo "ERROR: Vendored libs not found. Run once:"
+    echo "  bash $DAISY_ROOT/vendor/install.sh"
+    exit 1
+fi
+
+export PYTHONPATH="$VENDOR_LIB:$DAISY_ROOT:${PYTHONPATH:-}"
+exec python3 -m claude_api.cli "$@"

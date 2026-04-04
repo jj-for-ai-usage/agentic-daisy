@@ -1,0 +1,95 @@
+"""Agentic Daisy — Persistent memory system (JSON file-backed)."""
+from __future__ import annotations
+
+import json
+import os
+from datetime import datetime, timezone
+from typing import Any, Dict, List, Optional
+
+
+class MemoryStore:
+    """Simple key-value memory store persisted as a single JSON file."""
+
+    def __init__(self, memory_dir: str) -> None:
+        self.memory_dir = memory_dir
+        os.makedirs(memory_dir, exist_ok=True)
+        self.memory_file = os.path.join(memory_dir, "memories.json")
+        self._memories: List[Dict[str, Any]] = []
+        self._load()
+
+    def _load(self) -> None:
+        if os.path.exists(self.memory_file):
+            with open(self.memory_file, "r") as f:
+                self._memories = json.load(f)
+        else:
+            self._memories = []
+
+    def _save(self) -> None:
+        with open(self.memory_file, "w") as f:
+            json.dump(self._memories, f, indent=2, default=str)
+
+    def _now_iso(self) -> str:
+        return datetime.now(timezone.utc).isoformat()
+
+    def save_memory(
+        self,
+        key: str,
+        value: str,
+        tags: Optional[List[str]] = None,
+    ) -> str:
+        """Save or update a memory. Returns confirmation string."""
+        if tags is None:
+            tags = []
+
+        # Check if key already exists
+        for mem in self._memories:
+            if mem["key"] == key:
+                mem["value"] = value
+                mem["tags"] = tags
+                mem["updated"] = self._now_iso()
+                self._save()
+                return json.dumps({"status": "updated", "key": key})
+
+        # New entry
+        self._memories.append({
+            "key": key,
+            "value": value,
+            "tags": tags,
+            "created": self._now_iso(),
+            "updated": self._now_iso(),
+        })
+        self._save()
+        return json.dumps({"status": "created", "key": key})
+
+    def search_memory(
+        self,
+        query: str = "",
+        tag: str = "",
+    ) -> str:
+        """Search memories by keyword or tag. Returns JSON array of matches."""
+        results = []
+        for mem in self._memories:
+            # Tag filter
+            if tag and tag not in mem.get("tags", []):
+                continue
+            # Keyword filter (substring match on key and value)
+            if query:
+                q = query.lower()
+                if q not in mem["key"].lower() and q not in mem["value"].lower():
+                    continue
+            results.append(mem)
+
+        if not results:
+            return json.dumps({"matches": 0, "results": []})
+        return json.dumps({"matches": len(results), "results": results}, default=str)
+
+    def list_memories(self) -> str:
+        """List all memory keys with tags and timestamps."""
+        summary = []
+        for mem in self._memories:
+            summary.append({
+                "key": mem["key"],
+                "tags": mem.get("tags", []),
+                "updated": mem.get("updated", mem.get("created", "")),
+            })
+        return json.dumps({"total": len(summary), "memories": summary})
