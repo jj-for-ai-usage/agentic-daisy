@@ -483,7 +483,7 @@ def test_session_sanitize():
         shutil.rmtree(d)
 
 
-@test("Built-in tools: all 10 registered")
+@test("Built-in tools: all 13 registered")
 def test_builtin_tools():
     from claude_api.built_in_tools import create_default_registry
     from claude_api.config import DaisyConfig
@@ -493,10 +493,11 @@ def test_builtin_tools():
     names = {t["name"] for t in tools}
     expected = {
         "save_memory", "search_memory", "delete_memory", "list_memories",
-        "read_file", "write_file", "list_directory",
-        "search_files", "find_files", "directory_tree",
+        "read_file", "write_file", "edit_file", "append_file",
+        "list_directory", "search_files", "find_files", "directory_tree",
+        "get_env",
     }
-    assert names == expected, "Missing tools: %s" % (expected - names)
+    assert names == expected, "Missing: %s  Extra: %s" % (expected - names, names - expected)
 
 
 @test("System prompt: generated with all tools")

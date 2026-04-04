@@ -3,8 +3,8 @@ from __future__ import annotations
 
 from .config import DaisyConfig
 from .file_tools import (
-    directory_tree, find_files, list_directory, read_file, search_files,
-    write_file,
+    append_file, directory_tree, edit_file, find_files, get_env,
+    list_directory, read_file, search_files, write_file,
 )
 from .memory import MemoryStore
 from .tool_registry import ToolRegistry
@@ -279,6 +279,71 @@ def create_default_registry(config: DaisyConfig) -> ToolRegistry:
             "required": ["path", "content"],
         },
         handler=write_file,
+    )
+
+    registry.register(
+        name="edit_file",
+        description=(
+            "Surgical find-and-replace in a file. Only changes the matched "
+            "text — much cheaper than rewriting the whole file with write_file. "
+            "The old_string must match exactly once."
+        ),
+        input_schema={
+            "type": "object",
+            "properties": {
+                "path": {
+                    "type": "string",
+                    "description": "File path to edit",
+                },
+                "old_string": {
+                    "type": "string",
+                    "description": "Exact text to find (must be unique in the file)",
+                },
+                "new_string": {
+                    "type": "string",
+                    "description": "Replacement text",
+                },
+            },
+            "required": ["path", "old_string", "new_string"],
+        },
+        handler=edit_file,
+    )
+
+    registry.register(
+        name="append_file",
+        description=(
+            "Append content to the end of a file without reading it first. "
+            "Creates the file if it doesn't exist."
+        ),
+        input_schema={
+            "type": "object",
+            "properties": {
+                "path": {
+                    "type": "string",
+                    "description": "File path to append to",
+                },
+                "content": {
+                    "type": "string",
+                    "description": "Content to append",
+                },
+            },
+            "required": ["path", "content"],
+        },
+        handler=append_file,
+    )
+
+    registry.register(
+        name="get_env",
+        description=(
+            "Get a system environment snapshot: hostname, user, cwd, "
+            "Python version, OS, disk usage. One call instead of multiple "
+            "shell commands."
+        ),
+        input_schema={
+            "type": "object",
+            "properties": {},
+        },
+        handler=get_env,
     )
 
     registry.register(

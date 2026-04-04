@@ -51,6 +51,77 @@ def write_file(path: str, content: str) -> str:
         return json.dumps({"error": str(exc), "path": path})
 
 
+def edit_file(path: str, old_string: str, new_string: str) -> str:
+    """Surgical find-and-replace in a file. Only changes the matched text."""
+    path = os.path.expanduser(path)
+    try:
+        with open(path, "r") as f:
+            content = f.read()
+        count = content.count(old_string)
+        if count == 0:
+            return json.dumps({
+                "error": "old_string not found in file",
+                "path": path,
+            })
+        if count > 1:
+            return json.dumps({
+                "error": "old_string matches %d times — provide more context to make it unique" % count,
+                "path": path,
+                "matches": count,
+            })
+        new_content = content.replace(old_string, new_string, 1)
+        with open(path, "w") as f:
+            f.write(new_content)
+        return json.dumps({
+            "status": "edited",
+            "path": path,
+            "replacements": 1,
+        })
+    except Exception as exc:
+        return json.dumps({"error": str(exc), "path": path})
+
+
+def append_file(path: str, content: str) -> str:
+    """Append content to the end of a file. Creates the file if it doesn't exist."""
+    path = os.path.expanduser(path)
+    try:
+        parent = os.path.dirname(path)
+        if parent:
+            os.makedirs(parent, exist_ok=True)
+        with open(path, "a") as f:
+            f.write(content)
+        return json.dumps({
+            "status": "appended",
+            "path": path,
+            "bytes_added": len(content),
+        })
+    except Exception as exc:
+        return json.dumps({"error": str(exc), "path": path})
+
+
+def get_env() -> str:
+    """Return a snapshot of the current system environment."""
+    import platform
+    import shutil
+    info = {
+        "hostname": platform.node(),
+        "user": os.environ.get("USER", os.environ.get("LOGNAME", "unknown")),
+        "cwd": os.getcwd(),
+        "python_version": platform.python_version(),
+        "os": "%s %s" % (platform.system(), platform.release()),
+        "arch": platform.machine(),
+    }
+    # Disk usage for cwd
+    try:
+        usage = shutil.disk_usage(os.getcwd())
+        info["disk_total_gb"] = round(usage.total / (1024 ** 3), 1)
+        info["disk_free_gb"] = round(usage.free / (1024 ** 3), 1)
+        info["disk_used_pct"] = round((usage.used / usage.total) * 100, 1)
+    except OSError:
+        pass
+    return json.dumps(info)
+
+
 def list_directory(path: str = ".") -> str:
     """List directory contents with type and size info."""
     path = os.path.expanduser(path)
