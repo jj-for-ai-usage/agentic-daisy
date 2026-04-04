@@ -167,6 +167,7 @@ def main() -> None:
                     },
                     handler=make_run_python(
                         audit, interactive=args.interactive,
+                        workspace_dir=config.workspace_dir,
                     ),
                 )
 

@@ -17,6 +17,7 @@ _PROJECT_ROOT = os.environ.get("DAISY_ROOT", os.getcwd())
 DEFAULT_MEMORY_DIR = os.path.join(_PROJECT_ROOT, ".daisy", "memory")
 DEFAULT_LOG_DIR = os.path.join(_PROJECT_ROOT, ".daisy", "logs")
 DEFAULT_SESSION_DIR = os.path.join(_PROJECT_ROOT, ".daisy", "sessions")
+DEFAULT_WORKSPACE_DIR = os.path.join(_PROJECT_ROOT, ".daisy", "workspace")
 
 # API key file stays in home dir (should NOT be inside the git repo)
 DEFAULT_API_KEY_FILE = os.path.expanduser("~/.daisy/api_key")
@@ -54,6 +55,7 @@ class DaisyConfig:
         max_tokens: int = DEFAULT_MAX_TOKENS,
         memory_dir: str = DEFAULT_MEMORY_DIR,
         log_dir: str = DEFAULT_LOG_DIR,
+        workspace_dir: str = DEFAULT_WORKSPACE_DIR,
         system_prompt: Optional[str] = None,
         debug: bool = False,
         api_key_file: str = DEFAULT_API_KEY_FILE,
@@ -71,5 +73,6 @@ class DaisyConfig:
         self.max_tokens = max_tokens
         self.memory_dir = memory_dir
         self.log_dir = log_dir
+        self.workspace_dir = workspace_dir
         self.system_prompt = system_prompt
         self.debug = debug

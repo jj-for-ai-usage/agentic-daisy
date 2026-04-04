@@ -96,11 +96,17 @@ def make_run_command(audit: AuditLogger, interactive: bool = False):
     return run_command
 
 
-def make_run_python(audit: AuditLogger, interactive: bool = False):
+def make_run_python(audit: AuditLogger, interactive: bool = False,
+                    workspace_dir: str = ""):
     """Factory returning a run_python handler with audit and mode context."""
+    from datetime import datetime as _dt
+
+    # Set up workspace directory for saving scripts
+    if workspace_dir:
+        os.makedirs(workspace_dir, mode=0o700, exist_ok=True)
 
     def run_python(code: str, timeout: int = 60) -> str:
-        """Write Python code to a temp file, execute it, return output."""
+        """Write Python code to workspace, execute it, return output."""
         import time
 
         timeout = max(1, min(timeout, MAX_TIMEOUT))
@@ -119,56 +125,57 @@ def make_run_python(audit: AuditLogger, interactive: bool = False):
             if answer not in ("y", "yes"):
                 return json.dumps({"status": "cancelled", "reason": "User declined"})
 
-        # Write code to temp file
-        fd, tmp_path = tempfile.mkstemp(suffix=".py", prefix="daisy-")
-        try:
+        # Write script to workspace (kept for inspection) or fall back to /tmp
+        if workspace_dir:
+            stamp = _dt.now().strftime("%Y%m%d_%H%M%S")
+            script_path = os.path.join(workspace_dir, "script_%s.py" % stamp)
+            with open(script_path, "w") as f:
+                f.write(code)
+        else:
+            fd, script_path = tempfile.mkstemp(suffix=".py", prefix="daisy-")
             with os.fdopen(fd, "w") as f:
                 f.write(code)
 
-            t0 = time.time()
-            timed_out = False
-            try:
-                python_cmd = os.environ.get("DAISY_PYTHON", "python3::3.9.9")
-                proc = subprocess.run(
-                    [python_cmd, tmp_path],
-                    capture_output=True,
-                    text=True,
-                    timeout=timeout,
-                    env=_safe_env(),
-                )
-                exit_code = proc.returncode
-                stdout = proc.stdout
-                stderr = proc.stderr
-            except subprocess.TimeoutExpired:
-                timed_out = True
-                exit_code = -1
-                stdout = ""
-                stderr = "Script timed out after %d seconds" % timeout
-            except Exception as exc:
-                exit_code = -1
-                stdout = ""
-                stderr = "Failed to execute: %s" % exc
-
-            elapsed = time.time() - t0
-
-            audit.log_shell_command(
-                command="%s <script:%d lines>" % (python_cmd, len(code.splitlines())),
-                exit_code=exit_code,
-                timed_out=timed_out,
-                latency_s=elapsed,
+        t0 = time.time()
+        timed_out = False
+        try:
+            python_cmd = os.environ.get("DAISY_PYTHON", "python3::3.9.9")
+            proc = subprocess.run(
+                [python_cmd, script_path],
+                capture_output=True,
+                text=True,
+                timeout=timeout,
+                env=_safe_env(),
             )
+            exit_code = proc.returncode
+            stdout = proc.stdout
+            stderr = proc.stderr
+        except subprocess.TimeoutExpired:
+            timed_out = True
+            exit_code = -1
+            stdout = ""
+            stderr = "Script timed out after %d seconds" % timeout
+        except Exception as exc:
+            exit_code = -1
+            stdout = ""
+            stderr = "Failed to execute: %s" % exc
 
-            return json.dumps({
-                "exit_code": exit_code,
-                "stdout": stdout[:MAX_OUTPUT] if len(stdout) > MAX_OUTPUT else stdout,
-                "stderr": stderr[:MAX_OUTPUT] if len(stderr) > MAX_OUTPUT else stderr,
-                "timed_out": timed_out,
-                "truncated": len(stdout) + len(stderr) > MAX_OUTPUT,
-            })
-        finally:
-            try:
-                os.unlink(tmp_path)
-            except OSError:
-                pass
+        elapsed = time.time() - t0
+
+        audit.log_shell_command(
+            command="%s <script:%d lines>" % (python_cmd, len(code.splitlines())),
+            exit_code=exit_code,
+            timed_out=timed_out,
+            latency_s=elapsed,
+        )
+
+        return json.dumps({
+            "exit_code": exit_code,
+            "stdout": stdout[:MAX_OUTPUT] if len(stdout) > MAX_OUTPUT else stdout,
+            "stderr": stderr[:MAX_OUTPUT] if len(stderr) > MAX_OUTPUT else stderr,
+            "timed_out": timed_out,
+            "truncated": len(stdout) + len(stderr) > MAX_OUTPUT,
+            "script_path": script_path,
+        })
 
     return run_python
