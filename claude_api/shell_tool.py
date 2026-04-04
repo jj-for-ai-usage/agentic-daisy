@@ -14,6 +14,14 @@ if TYPE_CHECKING:
 MAX_OUTPUT = 50_000  # characters
 MAX_TIMEOUT = 300  # seconds
 
+# Environment variables to strip from subprocesses (prevent key leakage)
+_SENSITIVE_KEYS = {"ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN", "API_KEY"}
+
+
+def _safe_env() -> dict:
+    """Return a copy of os.environ with sensitive keys removed."""
+    return {k: v for k, v in os.environ.items() if k not in _SENSITIVE_KEYS}
+
 
 def make_run_command(audit: AuditLogger, interactive: bool = False):
     """Factory returning a run_command handler with audit and mode context."""
@@ -44,6 +52,7 @@ def make_run_command(audit: AuditLogger, interactive: bool = False):
                 capture_output=True,
                 text=True,
                 timeout=timeout,
+                env=_safe_env(),
             )
             exit_code = proc.returncode
             stdout = proc.stdout
@@ -124,6 +133,7 @@ def make_run_python(audit: AuditLogger, interactive: bool = False):
                     capture_output=True,
                     text=True,
                     timeout=timeout,
+                    env=_safe_env(),
                 )
                 exit_code = proc.returncode
                 stdout = proc.stdout

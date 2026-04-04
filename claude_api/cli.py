@@ -197,6 +197,7 @@ def main() -> None:
             sys.exit(1)
     finally:
         if audit is not None:
+            print("\n[%s]" % audit.get_session_summary(), file=sys.stderr)
             audit.log_session_end()
 
 

@@ -14,6 +14,55 @@ from .tool_registry import ToolRegistry
 LOG = logging.getLogger("daisy")
 
 MAX_TOOL_ROUNDS = 20
+MAX_API_RETRIES = 4
+RETRY_BASE_DELAY = 2  # seconds; doubles each retry: 2, 4, 8, 16
+
+# Rough per-message token budget to warn before overflow.
+# Leave headroom for the response; warn if input approaches this.
+CONTEXT_TOKEN_WARNING = 150_000
+
+
+def _call_api_with_retry(client, call_kwargs: Dict[str, Any]) -> Any:
+    """Call messages.create with exponential backoff on transient errors."""
+    last_exc = None
+    for attempt in range(MAX_API_RETRIES + 1):
+        try:
+            return client.messages.create(**call_kwargs)
+        except anthropic.RateLimitError as exc:
+            last_exc = exc
+            if attempt == MAX_API_RETRIES:
+                break
+            delay = RETRY_BASE_DELAY * (2 ** attempt)
+            LOG.warning(
+                "Rate limited (attempt %d/%d), retrying in %ds...",
+                attempt + 1, MAX_API_RETRIES + 1, delay,
+            )
+            time.sleep(delay)
+        except anthropic.APIConnectionError as exc:
+            last_exc = exc
+            if attempt == MAX_API_RETRIES:
+                break
+            delay = RETRY_BASE_DELAY * (2 ** attempt)
+            LOG.warning(
+                "Connection error (attempt %d/%d): %s — retrying in %ds...",
+                attempt + 1, MAX_API_RETRIES + 1, exc, delay,
+            )
+            time.sleep(delay)
+        except anthropic.APIStatusError as exc:
+            # Retry on 500/502/503/529 (overloaded); don't retry 400/401/403
+            if exc.status_code in (500, 502, 503, 529):
+                last_exc = exc
+                if attempt == MAX_API_RETRIES:
+                    break
+                delay = RETRY_BASE_DELAY * (2 ** attempt)
+                LOG.warning(
+                    "API error %d (attempt %d/%d), retrying in %ds...",
+                    exc.status_code, attempt + 1, MAX_API_RETRIES + 1, delay,
+                )
+                time.sleep(delay)
+            else:
+                raise  # 400, 401, 403 etc. — not transient
+    raise last_exc  # type: ignore[misc]
 
 
 def run_agent_loop(
@@ -54,7 +103,18 @@ def run_agent_loop(
 
         LOG.debug("Round %d: sending request to %s", round_num, config.model)
         t0 = time.time()
-        response = client.messages.create(**call_kwargs)
+        try:
+            response = _call_api_with_retry(client, call_kwargs)
+        except anthropic.AuthenticationError as exc:
+            return "[Daisy: authentication failed — check your API key: %s]" % exc
+        except anthropic.APIConnectionError as exc:
+            return "[Daisy: connection failed after %d retries — %s]" % (
+                MAX_API_RETRIES + 1, exc,
+            )
+        except anthropic.APIStatusError as exc:
+            return "[Daisy: API error %d after retries — %s]" % (
+                exc.status_code, exc,
+            )
         elapsed = time.time() - t0
 
         audit.log_api_call(
@@ -73,6 +133,14 @@ def run_agent_loop(
             response.stop_reason,
             elapsed,
         )
+
+        # Context window warning
+        if response.usage.input_tokens > CONTEXT_TOKEN_WARNING:
+            LOG.warning(
+                "Context is large (%d input tokens). "
+                "Consider starting a new session to avoid degraded responses.",
+                response.usage.input_tokens,
+            )
 
         # Serialize assistant content blocks to plain dicts
         assistant_content: List[Dict[str, Any]] = []

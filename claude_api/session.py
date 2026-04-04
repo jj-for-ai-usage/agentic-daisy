@@ -18,7 +18,7 @@ class SessionManager:
 
     def __init__(self, session_dir: str = DEFAULT_SESSION_DIR) -> None:
         self.session_dir = session_dir
-        os.makedirs(session_dir, exist_ok=True)
+        os.makedirs(session_dir, mode=0o700, exist_ok=True)
 
     def _session_path(self, name: str) -> str:
         safe_name = "".join(c for c in name if c.isalnum() or c in "-_.")

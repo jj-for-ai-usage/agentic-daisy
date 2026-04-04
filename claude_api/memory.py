@@ -16,7 +16,7 @@ class MemoryStore:
 
     def __init__(self, memory_dir: str) -> None:
         self.memory_dir = memory_dir
-        os.makedirs(memory_dir, exist_ok=True)
+        os.makedirs(memory_dir, mode=0o700, exist_ok=True)
         self.memory_file = os.path.join(memory_dir, "memories.json")
         self._memories: List[Dict[str, Any]] = []
         self._load()
