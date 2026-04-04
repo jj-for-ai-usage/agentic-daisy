@@ -2,7 +2,10 @@
 from __future__ import annotations
 
 import inspect
+import logging
 from typing import Any, Callable, Dict, List, Optional
+
+LOG = logging.getLogger("daisy")
 
 
 class ToolDef:
@@ -42,6 +45,16 @@ class ToolRegistry:
         input_schema: Dict[str, Any],
         handler: Callable[..., str],
     ) -> None:
+        # Anthropic API requires input_schema to have "type" field
+        if not isinstance(input_schema, dict) or "type" not in input_schema:
+            LOG.warning(
+                "Tool '%s' has invalid input_schema (missing 'type'). "
+                "Auto-fixing to type: object.", name,
+            )
+            if not isinstance(input_schema, dict):
+                input_schema = {"type": "object"}
+            else:
+                input_schema = dict(input_schema, type="object")
         self._tools[name] = ToolDef(name, description, input_schema, handler)
 
     def get(self, name: str) -> Optional[ToolDef]:
