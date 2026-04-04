@@ -460,16 +460,20 @@ chmod 600 ~/.daisy/api_key</code></pre>
 &nbsp;&nbsp;&boxv;&nbsp;&nbsp;&nbsp;&boxvr;&nbsp;<span class="file">config.py</span> <span class="note">&nbsp;&nbsp;configuration + key file loader</span><br>
 &nbsp;&nbsp;&boxv;&nbsp;&nbsp;&nbsp;&boxvr;&nbsp;<span class="file">agent_loop.py</span> <span class="note">&nbsp;&nbsp;core tool-use loop with retry</span><br>
 &nbsp;&nbsp;&boxv;&nbsp;&nbsp;&nbsp;&boxvr;&nbsp;<span class="file">tool_registry.py</span> <span class="note">&nbsp;&nbsp;tool registration &amp; execution</span><br>
-&nbsp;&nbsp;&boxv;&nbsp;&nbsp;&nbsp;&boxvr;&nbsp;<span class="file">built_in_tools.py</span> <span class="note">&nbsp;&nbsp;registers all tools + system prompt</span><br>
+&nbsp;&nbsp;&boxv;&nbsp;&nbsp;&nbsp;&boxvr;&nbsp;<span class="file">built_in_tools.py</span> <span class="note">&nbsp;&nbsp;system prompt + tool loader</span><br>
 &nbsp;&nbsp;&boxv;&nbsp;&nbsp;&nbsp;&boxvr;&nbsp;<span class="file">memory.py</span> <span class="note">&nbsp;&nbsp;JSON-backed persistent memory</span><br>
-&nbsp;&nbsp;&boxv;&nbsp;&nbsp;&nbsp;&boxvr;&nbsp;<span class="file">file_tools.py</span> <span class="note">&nbsp;&nbsp;read/write/search/find/tree</span><br>
-&nbsp;&nbsp;&boxv;&nbsp;&nbsp;&nbsp;&boxvr;&nbsp;<span class="file">shell_tool.py</span> <span class="note">&nbsp;&nbsp;run_command + run_python</span><br>
 &nbsp;&nbsp;&boxv;&nbsp;&nbsp;&nbsp;&boxvr;&nbsp;<span class="file">audit.py</span> <span class="note">&nbsp;&nbsp;JSONL audit logger + cost tracking</span><br>
 &nbsp;&nbsp;&boxv;&nbsp;&nbsp;&nbsp;&boxvr;&nbsp;<span class="file">session.py</span> <span class="note">&nbsp;&nbsp;conversation persistence</span><br>
-&nbsp;&nbsp;&boxv;&nbsp;&nbsp;&nbsp;&boxur;&nbsp;<span class="file">test_suite.py</span> <span class="note">&nbsp;&nbsp;35 automated tests</span><br>
+&nbsp;&nbsp;&boxv;&nbsp;&nbsp;&nbsp;&boxvr;&nbsp;<span class="file">test_suite.py</span> <span class="note">&nbsp;&nbsp;35 automated tests</span><br>
+&nbsp;&nbsp;&boxv;&nbsp;&nbsp;&nbsp;&boxur;&nbsp;<span class="dir">tools/</span> <span class="note">&nbsp;&nbsp;per-tool modules (one file per tool)</span><br>
+&nbsp;&nbsp;&boxv;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&boxvr;&nbsp;<span class="dir">memory/</span> <span class="note">&nbsp;&nbsp;save, search, delete, list</span><br>
+&nbsp;&nbsp;&boxv;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&boxvr;&nbsp;<span class="dir">file/</span> <span class="note">&nbsp;&nbsp;read, write, edit, append</span><br>
+&nbsp;&nbsp;&boxv;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&boxvr;&nbsp;<span class="dir">search/</span> <span class="note">&nbsp;&nbsp;search_files, find, tree, list_dir</span><br>
+&nbsp;&nbsp;&boxv;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&boxvr;&nbsp;<span class="dir">system/</span> <span class="note">&nbsp;&nbsp;get_env</span><br>
+&nbsp;&nbsp;&boxv;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&boxur;&nbsp;<span class="dir">execution/</span> <span class="note">&nbsp;&nbsp;run_command, run_python</span><br>
 &nbsp;&nbsp;&boxvr;&nbsp;<span class="dir">vendor/</span><br>
 &nbsp;&nbsp;&boxv;&nbsp;&nbsp;&nbsp;&boxvr;&nbsp;<span class="file">install.sh</span> <span class="note">&nbsp;&nbsp;one-time wheel unpacker</span><br>
-&nbsp;&nbsp;&boxv;&nbsp;&nbsp;&nbsp;&boxvr;&nbsp;<span class="dir">wheels/</span> <span class="note">&nbsp;&nbsp;17 pre-downloaded .whl files (~6 MB)</span><br>
+&nbsp;&nbsp;&boxv;&nbsp;&nbsp;&nbsp;&boxvr;&nbsp;<span class="dir">wheels/</span> <span class="note">&nbsp;&nbsp;18 pre-downloaded .whl files (~6 MB)</span><br>
 &nbsp;&nbsp;&boxv;&nbsp;&nbsp;&nbsp;&boxur;&nbsp;<span class="dir">lib/</span> <span class="note">&nbsp;&nbsp;unpacked packages (gitignored)</span><br>
 &nbsp;&nbsp;&boxur;&nbsp;<span class="dir">docs/</span><br>
 &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&boxur;&nbsp;<span class="file">guide.html</span> <span class="note">&nbsp;&nbsp;this file</span>
