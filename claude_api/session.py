@@ -21,7 +21,7 @@ class SessionManager:
         os.makedirs(session_dir, mode=0o700, exist_ok=True)
 
     def _session_path(self, name: str) -> str:
-        safe_name = "".join(c for c in name if c.isalnum() or c in "-_.")
+        safe_name = "".join(c for c in name if c.isalnum() or c in "-_")
         if not safe_name:
             safe_name = "default"
         return os.path.join(self.session_dir, safe_name + ".json")

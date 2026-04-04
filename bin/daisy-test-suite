@@ -1,0 +1,52 @@
+#!/bin/bash
+# Agentic Daisy — Full System Test Suite
+#
+# Runs all offline tests (no API key needed), then optionally
+# runs online tests if an API key is available.
+#
+# Usage:
+#   bash bin/daisy-test-suite                    # offline tests only
+#   bash bin/daisy-test-suite --api-key 'sk-...' # offline + online tests
+#   bash bin/daisy-test-suite --quick            # fast subset (imports + smoke)
+#
+# Exit codes:
+#   0 = all tests passed
+#   1 = one or more tests failed
+
+set -e
+
+DAISY_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+VENDOR_LIB="$DAISY_ROOT/vendor/lib"
+
+# ── Parse args ─────────────────────────────────────────────
+API_KEY=""
+QUICK=false
+for arg in "$@"; do
+    case "$arg" in
+        --api-key) shift; API_KEY="$1"; shift ;;
+        --api-key=*) API_KEY="${arg#*=}" ;;
+        --quick) QUICK=true; shift ;;
+    esac
+done
+
+# Fall back to env var
+if [ -z "$API_KEY" ]; then
+    API_KEY="${ANTHROPIC_API_KEY:-}"
+fi
+
+# ── Preflight ──────────────────────────────────────────────
+if [ ! -d "$VENDOR_LIB" ] || [ -z "$(ls "$VENDOR_LIB"/ 2>/dev/null)" ]; then
+    echo "ERROR: Vendored libraries not found. Run:  bash $DAISY_ROOT/vendor/install.sh"
+    exit 1
+fi
+
+export PYTHONPATH="$VENDOR_LIB:$DAISY_ROOT:${PYTHONPATH:-}"
+
+# ── Run tests ──────────────────────────────────────────────
+if [ "$QUICK" = true ]; then
+    echo "=== Daisy Quick Test ==="
+    exec python3 "$DAISY_ROOT/claude_api/test_suite.py" --quick ${API_KEY:+--api-key "$API_KEY"}
+else
+    echo "=== Daisy Full Test Suite ==="
+    exec python3 "$DAISY_ROOT/claude_api/test_suite.py" ${API_KEY:+--api-key "$API_KEY"}
+fi
