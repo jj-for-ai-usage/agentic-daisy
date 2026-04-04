@@ -10,7 +10,8 @@ from typing import Any, Dict, List, Optional
 
 LOG = logging.getLogger("daisy")
 
-DEFAULT_SESSION_DIR = os.path.expanduser("~/.daisy/sessions")
+_PROJECT_ROOT = os.environ.get("DAISY_ROOT", os.getcwd())
+DEFAULT_SESSION_DIR = os.path.join(_PROJECT_ROOT, ".daisy", "sessions")
 
 
 class SessionManager:

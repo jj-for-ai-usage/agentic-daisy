@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import logging
 import os
 import shutil
 import stat
@@ -164,7 +165,10 @@ def test_memory_corruption():
         mem_file = os.path.join(d, "memories.json")
         with open(mem_file, "w") as f:
             f.write('{"broken')  # corrupted
+        # Suppress expected warning from corruption recovery
+        logging.getLogger("daisy").setLevel(logging.CRITICAL)
         mem = MemoryStore(d)  # should NOT crash
+        logging.getLogger("daisy").setLevel(logging.WARNING)
         assert len(mem._memories) == 0, "Should recover to empty"
     finally:
         shutil.rmtree(d)
@@ -433,7 +437,9 @@ def test_session_corruption():
         sm = SessionManager(d)
         with open(os.path.join(d, "broken.json"), "w") as f:
             f.write("{corrupt")
+        logging.getLogger("daisy").setLevel(logging.CRITICAL)
         loaded = sm.load("broken")
+        logging.getLogger("daisy").setLevel(logging.WARNING)
         assert loaded is None, "Should return None for corrupted session"
         sessions = sm.list_sessions()
         assert sessions[0]["updated"] == "corrupted"

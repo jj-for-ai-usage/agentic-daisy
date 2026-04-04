@@ -10,8 +10,15 @@ LOG = logging.getLogger("daisy")
 
 DEFAULT_MODEL = "claude-haiku-4-5"
 DEFAULT_MAX_TOKENS = 4096
-DEFAULT_MEMORY_DIR = os.path.expanduser("~/.daisy/memory")
-DEFAULT_LOG_DIR = os.path.expanduser("~/.daisy/logs")
+
+# Data directories default to .daisy/ inside the project root.
+# DAISY_ROOT is set by the bash launchers (bin/daisy etc.)
+_PROJECT_ROOT = os.environ.get("DAISY_ROOT", os.getcwd())
+DEFAULT_MEMORY_DIR = os.path.join(_PROJECT_ROOT, ".daisy", "memory")
+DEFAULT_LOG_DIR = os.path.join(_PROJECT_ROOT, ".daisy", "logs")
+DEFAULT_SESSION_DIR = os.path.join(_PROJECT_ROOT, ".daisy", "sessions")
+
+# API key file stays in home dir (should NOT be inside the git repo)
 DEFAULT_API_KEY_FILE = os.path.expanduser("~/.daisy/api_key")
 
 
@@ -52,10 +59,13 @@ class DaisyConfig:
         api_key_file: str = DEFAULT_API_KEY_FILE,
     ) -> None:
         # Priority: explicit arg > env var > key file
+        # Use None-aware checks so empty strings don't break the chain.
         self.api_key = (
             api_key
-            or os.environ.get("ANTHROPIC_API_KEY", "")
+            if api_key
+            else os.environ.get("ANTHROPIC_API_KEY")
             or _load_api_key_file(api_key_file)
+            or ""
         )
         self.model = model
         self.max_tokens = max_tokens

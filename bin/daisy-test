@@ -23,6 +23,7 @@ if [ ! -d "$VENDOR_LIB" ] || [ -z "$(ls "$VENDOR_LIB"/ 2>/dev/null)" ]; then
 fi
 
 # Prepend vendor/lib and project root to PYTHONPATH
+export DAISY_ROOT
 export PYTHONPATH="$VENDOR_LIB:$DAISY_ROOT:${PYTHONPATH:-}"
 
 exec $PYTHON "$DAISY_ROOT/claude_api/test_connectivity.py" "$@"

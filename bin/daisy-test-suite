@@ -42,6 +42,7 @@ if [ ! -d "$VENDOR_LIB" ] || [ -z "$(ls "$VENDOR_LIB"/ 2>/dev/null)" ]; then
     exit 1
 fi
 
+export DAISY_ROOT
 export PYTHONPATH="$VENDOR_LIB:$DAISY_ROOT:${PYTHONPATH:-}"
 
 # ── Run tests ──────────────────────────────────────────────

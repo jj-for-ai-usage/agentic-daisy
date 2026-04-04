@@ -9,7 +9,10 @@ from typing import Any, Optional
 from .agent_loop import run_agent_loop
 from .audit import AuditLogger
 from .built_in_tools import build_default_system_prompt, create_default_registry
-from .config import DaisyConfig, DEFAULT_MODEL, DEFAULT_MAX_TOKENS
+from .config import (
+    DaisyConfig, DEFAULT_MODEL, DEFAULT_MAX_TOKENS,
+    DEFAULT_MEMORY_DIR, DEFAULT_LOG_DIR,
+)
 from .tool_registry import ToolRegistry
 
 LOG = logging.getLogger("daisy")
@@ -64,8 +67,8 @@ def main() -> None:
         api_key=args.api_key,
         model=args.model,
         max_tokens=args.max_tokens,
-        memory_dir=args.memory_dir or DaisyConfig().memory_dir,
-        log_dir=args.log_dir or DaisyConfig().log_dir,
+        memory_dir=args.memory_dir or DEFAULT_MEMORY_DIR,
+        log_dir=args.log_dir or DEFAULT_LOG_DIR,
         system_prompt=args.system,
         debug=args.debug,
     )
