@@ -756,6 +756,44 @@ def test_get_batch_results_tool():
         shutil.rmtree(d)
 
 
+@test("Tool result spill-to-file on oversized output")
+def test_tool_spill():
+    from claude_api.agent_loop import MAX_TOOL_RESULT, _spill_to_file
+    from claude_api.config import DaisyConfig
+    d = tempfile.mkdtemp()
+    try:
+        config = DaisyConfig(workspace_dir=d)
+        big_output = "x" * (MAX_TOOL_RESULT + 1000)
+        path = _spill_to_file(big_output, "test_tool", config)
+        assert os.path.exists(path), "Spill file should exist"
+        with open(path) as f:
+            assert len(f.read()) == len(big_output), "Full output should be in file"
+        assert "tool_test_tool_" in path
+    finally:
+        shutil.rmtree(d)
+
+
+@test("directory_tree: capped at MAX_ENTRIES")
+def test_directory_tree_cap():
+    from claude_api.tools.search.directory_tree import handler, MAX_ENTRIES
+    # Create a dir with many files to guarantee cap is hit
+    d = tempfile.mkdtemp()
+    try:
+        for i in range(100):
+            sub = os.path.join(d, "dir_%03d" % i)
+            os.makedirs(sub)
+            for j in range(30):
+                open(os.path.join(sub, "file_%03d.txt" % j), "w").close()
+        # 100 dirs * 30 files = 3000 entries > MAX_ENTRIES=2000
+        r = json.loads(handler(d, max_depth=3))
+        assert r["entries"] <= MAX_ENTRIES, (
+            "Should cap at %d entries, got %d" % (MAX_ENTRIES, r["entries"])
+        )
+        assert r.get("truncated") is True, "Should flag truncation"
+    finally:
+        shutil.rmtree(d)
+
+
 @test("repair_tools: diagnose and fix missing schema type")
 def test_repair_tools():
     from claude_api.tool_registry import ToolRegistry
@@ -1129,6 +1167,8 @@ OFFLINE_TESTS = [
     test_batch_corruption,
     test_batch_persistence,
     test_get_batch_results_tool,
+    test_tool_spill,
+    test_directory_tree_cap,
     test_repair_tools,
     test_repair_skills,
     test_admin_hidden,
@@ -1155,6 +1195,8 @@ QUICK_TESTS = [
     test_task_lifecycle,
     test_batch_store,
     test_get_batch_results_tool,
+    test_tool_spill,
+    test_directory_tree_cap,
     test_repair_tools,
     test_repair_skills,
     test_admin_hidden,

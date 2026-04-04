@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import time
 from typing import Any, Dict, List, Optional
 
@@ -21,6 +22,10 @@ RETRY_BASE_DELAY = 2  # seconds; doubles each retry: 2, 4, 8, 16
 # Rough per-message token budget to warn before overflow.
 # Leave headroom for the response; warn if input approaches this.
 CONTEXT_TOKEN_WARNING = 150_000
+
+# Max chars for a tool result before spilling to file.
+# ~12,500 tokens — keeps individual results safe even with many rounds.
+MAX_TOOL_RESULT = 50_000
 
 # Tools whose results can be cached within a single agent loop (read-only tools)
 _CACHEABLE_TOOLS = frozenset({
@@ -72,6 +77,18 @@ def _call_api_with_retry(client, call_kwargs: Dict[str, Any]) -> Any:
             else:
                 raise  # 400, 401, 403 etc. — not transient
     raise last_exc  # type: ignore[misc]
+
+
+def _spill_to_file(content: str, tool_name: str, config) -> str:
+    """Save oversized tool output to a workspace file, return the path."""
+    workspace = getattr(config, "workspace_dir", "/tmp")
+    os.makedirs(workspace, exist_ok=True)
+    ts = time.strftime("%Y%m%d_%H%M%S")
+    filename = "tool_%s_%s.txt" % (tool_name, ts)
+    path = os.path.join(workspace, filename)
+    with open(path, "w") as f:
+        f.write(content)
+    return path
 
 
 def _make_cache_key(tool_name: str, tool_input: dict) -> str:
@@ -145,6 +162,16 @@ def run_agent_loop(
                 MAX_API_RETRIES + 1, exc,
             )
         except anthropic.APIStatusError as exc:
+            # Recover from oversized prompt via emergency compaction
+            if exc.status_code == 400 and "prompt is too long" in str(exc):
+                LOG.warning(
+                    "Prompt too long, attempting emergency compaction..."
+                )
+                compacted = compactor.maybe_compact(
+                    conversation_history, 999_999, audit,
+                )
+                if compacted:
+                    continue  # retry with compacted history
             return "[Daisy: API error %d after retries — %s]" % (
                 exc.status_code, exc,
             )
@@ -253,6 +280,26 @@ def run_agent_loop(
                     latency_s=tool_elapsed,
                     round_num=round_num,
                 )
+
+                # Spill oversized results to file (safety net)
+                if not is_error and len(result_str) > MAX_TOOL_RESULT:
+                    original_len = len(result_str)
+                    spill_path = _spill_to_file(result_str, tool_name, config)
+                    result_str = json.dumps({
+                        "spilled_to_file": spill_path,
+                        "original_size": original_len,
+                        "preview": result_str[:2000],
+                        "message": (
+                            "Output too large for context (%d chars). "
+                            "Full output saved to %s. Use run_command"
+                            "('head/tail/grep ...') or read_file to examine."
+                            % (original_len, spill_path)
+                        ),
+                    })
+                    LOG.info(
+                        "Tool %s output spilled to %s (%d chars)",
+                        tool_name, spill_path, original_len,
+                    )
 
                 if is_error:
                     LOG.warning("Tool %s failed: %s", tool_name, result_str)
