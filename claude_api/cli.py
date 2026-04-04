@@ -103,7 +103,7 @@ def main() -> None:
             registry = create_default_registry(config)
             # Register shell tool (needs audit + interactive context)
             if not args.no_shell:
-                from .shell_tool import make_run_command
+                from .shell_tool import make_run_command, make_run_python
                 registry.register(
                     name="run_command",
                     description=(
@@ -129,6 +129,33 @@ def main() -> None:
                         "required": ["command"],
                     },
                     handler=make_run_command(
+                        audit, interactive=args.interactive,
+                    ),
+                )
+                registry.register(
+                    name="run_python",
+                    description=(
+                        "Execute a Python script and return stdout, stderr, "
+                        "and exit code. Use for multi-line data processing, "
+                        "log analysis, config parsing, or any complex logic."
+                    ),
+                    input_schema={
+                        "type": "object",
+                        "properties": {
+                            "code": {
+                                "type": "string",
+                                "description": "Python code to execute",
+                            },
+                            "timeout": {
+                                "type": "integer",
+                                "description": (
+                                    "Timeout in seconds (default: 60, max: 300)"
+                                ),
+                            },
+                        },
+                        "required": ["code"],
+                    },
+                    handler=make_run_python(
                         audit, interactive=args.interactive,
                     ),
                 )
