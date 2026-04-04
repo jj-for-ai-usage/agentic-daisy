@@ -124,7 +124,7 @@ def main() -> None:
 
         # Set default system prompt if user didn't provide one
         if not config.system_prompt and registry.has_tools():
-            config.system_prompt = build_default_system_prompt(registry)
+            config.system_prompt = build_default_system_prompt(registry, config)
 
         # Session persistence
         session_mgr = None

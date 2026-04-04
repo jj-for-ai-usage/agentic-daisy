@@ -491,7 +491,7 @@ def test_session_sanitize():
         shutil.rmtree(d)
 
 
-@test("Built-in tools: all 13 registered")
+@test("Built-in tools: all 14 registered")
 def test_builtin_tools():
     from claude_api.built_in_tools import create_default_registry
     from claude_api.config import DaisyConfig
@@ -503,7 +503,7 @@ def test_builtin_tools():
         "save_memory", "search_memory", "delete_memory", "list_memories",
         "read_file", "write_file", "edit_file", "append_file",
         "list_directory", "search_files", "find_files", "directory_tree",
-        "get_env",
+        "get_env", "load_skill",
     }
     assert names == expected, "Missing: %s  Extra: %s" % (expected - names, names - expected)
 

@@ -5,13 +5,13 @@ from .config import DaisyConfig
 from .tool_registry import ToolRegistry
 
 
-def build_default_system_prompt(registry: ToolRegistry) -> str:
+def build_default_system_prompt(registry: ToolRegistry, config: DaisyConfig = None) -> str:
     """Build a system prompt describing the environment and available tools."""
     tools = registry.list_tool_summaries()
     tool_lines = "\n".join(
         "- %s: %s" % (t["name"], t["description"]) for t in tools
     )
-    return (
+    prompt = (
         "You are Daisy, an AI assistant for EDA application engineers at "
         "Cadence Design Systems. You support customers running Genus (synthesis) "
         "and Innovus (place-and-route) workflows on their DPC environments.\n"
@@ -153,6 +153,16 @@ def build_default_system_prompt(registry: ToolRegistry) -> str:
         "- When presenting QoR data, use aligned tables.\n"
         "- For errors, identify root cause first, then suggest fix." % tool_lines
     )
+
+    # Append skill index if skills are available
+    if config is not None:
+        from .skills import SkillLoader
+        loader = SkillLoader(config.skills_dir)
+        skills_section = loader.get_index_for_prompt()
+        if skills_section:
+            prompt += "\n" + skills_section
+
+    return prompt
 
 
 def create_default_registry(config: DaisyConfig) -> ToolRegistry:
