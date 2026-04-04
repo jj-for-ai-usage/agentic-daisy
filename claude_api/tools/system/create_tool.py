@@ -50,6 +50,11 @@ def make_handler(config=None, registry=None, **kwargs):
     def _handler(name, description, input_schema, handler_code, location="user"):
         # Sanitize name
         safe_name = re.sub(r"[^a-z0-9_]", "_", name.lower())
+        # Ensure input_schema has required "type" field for Anthropic API
+        if not isinstance(input_schema, dict):
+            input_schema = {"type": "object"}
+        if "type" not in input_schema:
+            input_schema["type"] = "object"
         # Resolve target directory
         if location == "project":
             target_dir = DEFAULT_CUSTOM_TOOLS_DIR

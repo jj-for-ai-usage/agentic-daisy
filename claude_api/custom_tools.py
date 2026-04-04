@@ -40,8 +40,15 @@ class CustomToolLoader:
                     for attr in _REQUIRED_ATTRS:
                         if not hasattr(mod, attr):
                             raise AttributeError("Missing required attribute: %s" % attr)
+                    # Ensure INPUT_SCHEMA has "type" (required by Anthropic API)
+                    schema = mod.INPUT_SCHEMA
+                    if not isinstance(schema, dict) or "type" not in schema:
+                        raise ValueError(
+                            "INPUT_SCHEMA must be a dict with 'type' field "
+                            "(e.g. {\"type\": \"object\", ...})"
+                        )
                     registry.register(mod.NAME, mod.DESCRIPTION,
-                                      mod.INPUT_SCHEMA, mod.handler)
+                                      schema, mod.handler)
                     LOG.debug("Loaded custom tool '%s' from %s", mod.NAME, path)
                     count += 1
                 except Exception as exc:
