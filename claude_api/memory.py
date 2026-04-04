@@ -107,6 +107,15 @@ class MemoryStore:
             return json.dumps({"matches": 0, "results": []})
         return json.dumps({"matches": len(results), "results": results}, default=str)
 
+    def delete_memory(self, key: str) -> str:
+        """Delete a memory by key. Returns confirmation or not-found."""
+        for i, mem in enumerate(self._memories):
+            if mem["key"] == key:
+                self._memories.pop(i)
+                self._save()
+                return json.dumps({"status": "deleted", "key": key})
+        return json.dumps({"status": "not_found", "key": key})
+
     def list_memories(self) -> str:
         """List all memory keys with tags and timestamps."""
         summary = []

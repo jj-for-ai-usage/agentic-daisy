@@ -82,6 +82,21 @@ class AuditLogger:
             "latency_s": round(latency_s, 3),
         })
 
+    def log_shell_command(
+        self,
+        command: str,
+        exit_code: int,
+        timed_out: bool,
+        latency_s: float,
+    ) -> None:
+        self._write({
+            "event": "shell_command",
+            "command": command,
+            "exit_code": exit_code,
+            "timed_out": timed_out,
+            "latency_s": round(latency_s, 3),
+        })
+
     def log_session_end(self) -> None:
         self._write({
             "event": "session_end",

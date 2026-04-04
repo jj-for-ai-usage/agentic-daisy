@@ -4,10 +4,11 @@ from __future__ import annotations
 import argparse
 import logging
 import sys
+from typing import Any, Optional
 
 from .agent_loop import run_agent_loop
 from .audit import AuditLogger
-from .built_in_tools import create_default_registry
+from .built_in_tools import build_default_system_prompt, create_default_registry
 from .config import DaisyConfig, DEFAULT_MODEL, DEFAULT_MAX_TOKENS
 from .tool_registry import ToolRegistry
 
@@ -40,6 +41,12 @@ def parse_args() -> argparse.Namespace:
                     help="Interactive REPL mode")
     ap.add_argument("--no-tools", action="store_true",
                     help="Disable tool use (plain chat)")
+    ap.add_argument("--no-shell", action="store_true",
+                    help="Disable shell command tool")
+    ap.add_argument("--session", default=None,
+                    help="Session name for conversation persistence")
+    ap.add_argument("--list-sessions", action="store_true",
+                    help="List saved sessions and exit")
     ap.add_argument("--debug", action="store_true",
                     help="Enable DEBUG logging")
     return ap.parse_args()
@@ -63,6 +70,20 @@ def main() -> None:
         debug=args.debug,
     )
 
+    # Handle --list-sessions early (no API key needed)
+    if args.list_sessions:
+        from .session import SessionManager
+        sm = SessionManager()
+        sessions = sm.list_sessions()
+        if not sessions:
+            print("No saved sessions.")
+        else:
+            for s in sessions:
+                print("  %-20s  %d turns  (updated: %s)" % (
+                    s["name"], s["turns"], s["updated"],
+                ))
+        sys.exit(0)
+
     if not config.api_key:
         LOG.error(
             "No API key provided. "
@@ -80,16 +101,67 @@ def main() -> None:
             registry = ToolRegistry()
         else:
             registry = create_default_registry(config)
+            # Register shell tool (needs audit + interactive context)
+            if not args.no_shell:
+                from .shell_tool import make_run_command
+                registry.register(
+                    name="run_command",
+                    description=(
+                        "Execute a shell command on the server and return "
+                        "stdout, stderr, and exit code."
+                    ),
+                    input_schema={
+                        "type": "object",
+                        "properties": {
+                            "command": {
+                                "type": "string",
+                                "description": (
+                                    "Shell command to execute (via /bin/sh -c)"
+                                ),
+                            },
+                            "timeout": {
+                                "type": "integer",
+                                "description": (
+                                    "Timeout in seconds (default: 30, max: 300)"
+                                ),
+                            },
+                        },
+                        "required": ["command"],
+                    },
+                    handler=make_run_command(
+                        audit, interactive=args.interactive,
+                    ),
+                )
 
+        # Set default system prompt if user didn't provide one
+        if not config.system_prompt and registry.has_tools():
+            config.system_prompt = build_default_system_prompt(registry)
+
+        # Session persistence
+        session_mgr = None
         conversation_history = []  # type: list
+        if args.session:
+            from .session import SessionManager
+            session_mgr = SessionManager()
+            loaded = session_mgr.load(args.session)
+            if loaded:
+                conversation_history = loaded
+                print("Resumed session '%s' (%d messages)" % (
+                    args.session, len(loaded),
+                ))
 
         if args.interactive:
-            _interactive_loop(config, registry, audit, conversation_history)
+            _interactive_loop(
+                config, registry, audit, history=conversation_history,
+                session_mgr=session_mgr, session_name=args.session,
+            )
         elif args.message:
             result = run_agent_loop(
                 config, args.message, registry, audit, conversation_history,
             )
             print(result)
+            if session_mgr and args.session:
+                session_mgr.save(args.session, conversation_history)
         else:
             print(
                 "ERROR: Provide a message or use --interactive.",
@@ -106,6 +178,8 @@ def _interactive_loop(
     registry: ToolRegistry,
     audit: AuditLogger,
     history: list,
+    session_mgr: Optional[Any] = None,
+    session_name: Optional[str] = None,
 ) -> None:
     print("Agentic Daisy (interactive). Type 'exit' or Ctrl-D to quit.\n")
     while True:
@@ -121,6 +195,9 @@ def _interactive_loop(
             continue
         result = run_agent_loop(config, user_input, registry, audit, history)
         print("\n%s\n" % result)
+        # Auto-save session after each turn
+        if session_mgr and session_name:
+            session_mgr.save(session_name, history)
 
 
 if __name__ == "__main__":

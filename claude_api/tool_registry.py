@@ -50,6 +50,13 @@ class ToolRegistry:
     def list_api_params(self) -> List[Dict[str, Any]]:
         return [t.to_api_param() for t in self._tools.values()]
 
+    def list_tool_summaries(self) -> List[Dict[str, str]]:
+        """Return [{name, description}, ...] for building system prompts."""
+        return [
+            {"name": t.name, "description": t.description}
+            for t in self._tools.values()
+        ]
+
     def has_tools(self) -> bool:
         return len(self._tools) > 0
 
