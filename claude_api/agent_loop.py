@@ -26,7 +26,7 @@ CONTEXT_TOKEN_WARNING = 150_000
 _CACHEABLE_TOOLS = frozenset({
     "read_file", "search_files", "find_files", "list_directory",
     "directory_tree", "search_memory", "list_memories", "get_env",
-    "load_skill",
+    "load_skill", "list_tasks", "get_task",
 })
 
 

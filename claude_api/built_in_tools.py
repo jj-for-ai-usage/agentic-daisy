@@ -171,6 +171,28 @@ def build_default_system_prompt(registry: ToolRegistry, config: DaisyConfig = No
         if skills_section:
             prompt += "\n" + skills_section
 
+    # Inject active tasks summary (saves a tool-use round at session start)
+    if config is not None:
+        try:
+            from .task_store import TaskStore
+            import json
+            store = TaskStore(config.task_dir)
+            active = json.loads(store.list_tasks(status="active"))
+            if active["count"] > 0:
+                lines = ["\n## Active Tasks (%d)" % active["count"]]
+                for t in active["tasks"]:
+                    lines.append(
+                        "- [%s] %s (%s, subtasks: %s, updated: %s)"
+                        % (t["id"], t["name"], t["priority"],
+                           t["subtasks"], t["updated"])
+                    )
+                lines.append(
+                    "\nUse get_task(task_id) for full detail before resuming."
+                )
+                prompt += "\n".join(lines) + "\n"
+        except Exception:
+            pass  # Don't break startup if task store has issues
+
     return prompt
 
 
