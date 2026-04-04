@@ -387,19 +387,28 @@ def test_run_python_timeout():
 @test("Shell tool: API key NOT in subprocess env")
 def test_api_key_scrubbed():
     from claude_api.shell_tool import _safe_env
-    os.environ["ANTHROPIC_API_KEY"] = "sk-test-secret-key"
-    env = _safe_env()
-    assert "ANTHROPIC_API_KEY" not in env, "API key leaked to subprocess!"
-    assert "PATH" in env, "PATH should be preserved"
-    # Also verify via actual subprocess
-    from claude_api.audit import AuditLogger
-    from claude_api.shell_tool import make_run_python
-    audit = AuditLogger(tempfile.mkdtemp(), "test")
-    handler = make_run_python(audit, interactive=False)
-    r = json.loads(handler(code=(
-        "import os; print(os.environ.get('ANTHROPIC_API_KEY', 'NOT_FOUND'))"
-    )))
-    assert "NOT_FOUND" in r["stdout"], "API key visible in subprocess!"
+    # Save and restore the real key so we don't clobber it for online tests
+    original_key = os.environ.get("ANTHROPIC_API_KEY")
+    try:
+        os.environ["ANTHROPIC_API_KEY"] = "sk-test-secret-key"
+        env = _safe_env()
+        assert "ANTHROPIC_API_KEY" not in env, "API key leaked to subprocess!"
+        assert "PATH" in env, "PATH should be preserved"
+        # Also verify via actual subprocess
+        from claude_api.audit import AuditLogger
+        from claude_api.shell_tool import make_run_python
+        audit = AuditLogger(tempfile.mkdtemp(), "test")
+        handler = make_run_python(audit, interactive=False)
+        r = json.loads(handler(code=(
+            "import os; print(os.environ.get('ANTHROPIC_API_KEY', 'NOT_FOUND'))"
+        )))
+        assert "NOT_FOUND" in r["stdout"], "API key visible in subprocess!"
+    finally:
+        # Restore the real key so online tests can use it
+        if original_key is not None:
+            os.environ["ANTHROPIC_API_KEY"] = original_key
+        else:
+            os.environ.pop("ANTHROPIC_API_KEY", None)
 
 
 @test("Session: save + load + list")
