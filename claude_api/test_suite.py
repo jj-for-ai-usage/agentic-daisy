@@ -503,9 +503,11 @@ def test_system_prompt():
 def test_cli_help():
     import subprocess
     project_root = os.path.dirname(os.path.dirname(__file__))
+    env = os.environ.copy()
+    env["DAISY_PYTHON"] = sys.executable  # use current Python for testing
     result = subprocess.run(
         [os.path.join(project_root, "bin", "daisy"), "--help"],
-        capture_output=True, text=True,
+        capture_output=True, text=True, env=env,
     )
     assert result.returncode == 0, "daisy --help failed: %s" % result.stderr
     assert "--interactive" in result.stdout
@@ -518,9 +520,11 @@ def test_cli_help():
 def test_cli_list_sessions():
     import subprocess
     project_root = os.path.dirname(os.path.dirname(__file__))
+    env = os.environ.copy()
+    env["DAISY_PYTHON"] = sys.executable
     result = subprocess.run(
         [os.path.join(project_root, "bin", "daisy"), "--list-sessions"],
-        capture_output=True, text=True,
+        capture_output=True, text=True, env=env,
     )
     assert result.returncode == 0, "daisy --list-sessions failed: %s" % result.stderr
 

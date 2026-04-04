@@ -18,6 +18,8 @@ set -e
 DAISY_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 VENDOR_LIB="$DAISY_ROOT/vendor/lib"
 
+PYTHON="${DAISY_PYTHON:-python3::3.9.9}"
+
 # ── Parse args ─────────────────────────────────────────────
 API_KEY=""
 QUICK=false
@@ -45,8 +47,8 @@ export PYTHONPATH="$VENDOR_LIB:$DAISY_ROOT:${PYTHONPATH:-}"
 # ── Run tests ──────────────────────────────────────────────
 if [ "$QUICK" = true ]; then
     echo "=== Daisy Quick Test ==="
-    exec python3 "$DAISY_ROOT/claude_api/test_suite.py" --quick ${API_KEY:+--api-key "$API_KEY"}
+    exec $PYTHON "$DAISY_ROOT/claude_api/test_suite.py" --quick ${API_KEY:+--api-key "$API_KEY"}
 else
     echo "=== Daisy Full Test Suite ==="
-    exec python3 "$DAISY_ROOT/claude_api/test_suite.py" ${API_KEY:+--api-key "$API_KEY"}
+    exec $PYTHON "$DAISY_ROOT/claude_api/test_suite.py" ${API_KEY:+--api-key "$API_KEY"}
 fi

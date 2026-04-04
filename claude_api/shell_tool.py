@@ -128,8 +128,9 @@ def make_run_python(audit: AuditLogger, interactive: bool = False):
             t0 = time.time()
             timed_out = False
             try:
+                python_cmd = os.environ.get("DAISY_PYTHON", "python3::3.9.9")
                 proc = subprocess.run(
-                    ["python3", tmp_path],
+                    [python_cmd, tmp_path],
                     capture_output=True,
                     text=True,
                     timeout=timeout,
@@ -151,7 +152,7 @@ def make_run_python(audit: AuditLogger, interactive: bool = False):
             elapsed = time.time() - t0
 
             audit.log_shell_command(
-                command="python3 <script:%d lines>" % len(code.splitlines()),
+                command="%s <script:%d lines>" % (python_cmd, len(code.splitlines())),
                 exit_code=exit_code,
                 timed_out=timed_out,
                 latency_s=elapsed,

@@ -12,6 +12,9 @@ set -e
 DAISY_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 VENDOR_LIB="$DAISY_ROOT/vendor/lib"
 
+# Use DAISY_PYTHON env var if set, otherwise default to python3
+PYTHON="${DAISY_PYTHON:-python3::3.9.9}"
+
 if [ ! -d "$VENDOR_LIB" ] || [ -z "$(ls "$VENDOR_LIB"/ 2>/dev/null)" ]; then
     echo "ERROR: Vendored libs not found. Run once:"
     echo "  bash $DAISY_ROOT/vendor/install.sh"
@@ -19,4 +22,4 @@ if [ ! -d "$VENDOR_LIB" ] || [ -z "$(ls "$VENDOR_LIB"/ 2>/dev/null)" ]; then
 fi
 
 export PYTHONPATH="$VENDOR_LIB:$DAISY_ROOT:${PYTHONPATH:-}"
-exec python3 -m claude_api.cli "$@"
+exec $PYTHON -m claude_api.cli "$@"
