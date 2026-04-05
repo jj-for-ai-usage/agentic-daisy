@@ -97,6 +97,23 @@ def _make_cache_key(tool_name: str, tool_input: dict) -> str:
     return tool_name + ":" + json.dumps(tool_input, sort_keys=True)
 
 
+def _cleanup_old_spill_files(workspace: str, max_age_days: int = 7) -> None:
+    """Remove spill files older than *max_age_days*."""
+    if not os.path.isdir(workspace):
+        return
+    cutoff = time.time() - (max_age_days * 86400)
+    for fname in os.listdir(workspace):
+        if not fname.startswith("tool_"):
+            continue
+        fpath = os.path.join(workspace, fname)
+        try:
+            if os.path.getmtime(fpath) < cutoff:
+                os.remove(fpath)
+                LOG.debug("Cleaned up old spill file: %s", fname)
+        except OSError:
+            pass
+
+
 def run_agent_loop(
     config: DaisyConfig,
     user_message: str,
@@ -112,6 +129,9 @@ def run_agent_loop(
     Mutates *conversation_history* in place so the caller can reuse it
     for multi-turn interactive sessions.
     """
+    # Clean up old spill files on session start
+    _cleanup_old_spill_files(getattr(config, "workspace_dir", ""))
+
     client = anthropic.Anthropic(api_key=config.api_key)
 
     if conversation_history is None:
