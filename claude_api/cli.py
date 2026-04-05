@@ -60,6 +60,10 @@ def parse_args() -> argparse.Namespace:
                     help="Max session cost in USD (default: $1.00, 0 = unlimited)")
     ap.add_argument("--compaction-threshold", type=int, default=80_000,
                     help="Input-token threshold to trigger conversation compaction (default: 80000)")
+    ap.add_argument("--temperature", type=float, default=0.3,
+                    help="Sampling temperature 0.0-1.0 (default: 0.3, lower = more consistent)")
+    ap.add_argument("--max-tool-rounds", type=int, default=20,
+                    help="Max tool execution rounds per message (default: 20)")
     ap.add_argument("--debug", action="store_true",
                     help="Enable DEBUG logging")
     ap.add_argument("--admin", action="store_true", default=False,
@@ -89,6 +93,8 @@ def main() -> None:
         debug=args.debug,
         budget=budget,
         compaction_threshold=args.compaction_threshold,
+        temperature=args.temperature,
+        max_tool_rounds=args.max_tool_rounds,
     )
 
     # Handle --list-sessions early (no API key needed)

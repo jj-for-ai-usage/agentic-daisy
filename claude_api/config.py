@@ -57,6 +57,11 @@ def _load_api_key_file(path: str) -> str:
 class DaisyConfig:
     """All configuration for a Daisy session."""
 
+    _KNOWN_MODELS = frozenset({
+        "claude-haiku-4-5", "claude-sonnet-4-5", "claude-opus-4",
+        "claude-sonnet-4-6", "claude-opus-4-6",
+    })
+
     def __init__(
         self,
         api_key: Optional[str] = None,
@@ -73,6 +78,8 @@ class DaisyConfig:
         api_key_file: str = DEFAULT_API_KEY_FILE,
         budget: Optional[float] = None,
         compaction_threshold: int = 80_000,
+        temperature: float = 0.3,
+        max_tool_rounds: int = 20,
     ) -> None:
         # Priority: explicit arg > env var > key file
         # Use None-aware checks so empty strings don't break the chain.
@@ -95,3 +102,29 @@ class DaisyConfig:
         self.debug = debug
         self.budget = budget
         self.compaction_threshold = compaction_threshold
+        self.temperature = temperature
+        self.max_tool_rounds = max_tool_rounds
+
+        # --- Validation (fail fast on bad config) ---
+        if self.max_tokens <= 0 or self.max_tokens > 128_000:
+            raise ValueError(
+                "max_tokens must be between 1 and 128000, got %d" % self.max_tokens
+            )
+        if self.budget is not None and self.budget <= 0:
+            raise ValueError(
+                "budget must be > 0 or None (unlimited), got %s" % self.budget
+            )
+        if not (0.0 <= self.temperature <= 1.0):
+            raise ValueError(
+                "temperature must be between 0.0 and 1.0, got %s" % self.temperature
+            )
+        if self.max_tool_rounds <= 0:
+            raise ValueError(
+                "max_tool_rounds must be > 0, got %d" % self.max_tool_rounds
+            )
+        if self.model not in self._KNOWN_MODELS:
+            # Don't block — dated versions like claude-sonnet-4-5-20250514 are valid
+            LOG.warning(
+                "Unknown model '%s'. Known: %s",
+                self.model, ", ".join(sorted(self._KNOWN_MODELS)),
+            )

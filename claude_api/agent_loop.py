@@ -16,7 +16,6 @@ from .tool_registry import ToolRegistry
 
 LOG = logging.getLogger("daisy")
 
-MAX_TOOL_ROUNDS = 20
 MAX_API_RETRIES = 4
 RETRY_BASE_DELAY = 2  # seconds; doubles each retry: 2, 4, 8, 16
 
@@ -134,7 +133,7 @@ def run_agent_loop(
 
     last_input_tokens = 0
 
-    for round_num in range(MAX_TOOL_ROUNDS):
+    for round_num in range(config.max_tool_rounds):
         # Compact conversation if it's getting large
         if round_num > 0 and last_input_tokens > 0:
             compacted = compactor.maybe_compact(
@@ -147,7 +146,7 @@ def run_agent_loop(
             model=config.model,
             max_tokens=config.max_tokens,
             messages=conversation_history,
-            temperature=0.3,
+            temperature=config.temperature,
         )
         if sys_prompt:
             call_kwargs["system"] = [
@@ -342,4 +341,4 @@ def run_agent_loop(
 
         conversation_history.append({"role": "user", "content": tool_results})
 
-    return "[Daisy: max tool rounds (%d) reached, stopping]" % MAX_TOOL_ROUNDS
+    return "[Daisy: max tool rounds (%d) reached, stopping]" % config.max_tool_rounds
