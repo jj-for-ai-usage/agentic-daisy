@@ -156,7 +156,7 @@ def run_agent_loop(
                 }
             ]
         if registry.has_tools():
-            call_kwargs["tools"] = registry.list_api_params()
+            call_kwargs["tools"] = registry.list_api_params(cache_last=True)
 
         LOG.debug("Round %d: sending request to %s", round_num, config.model)
         t0 = time.time()

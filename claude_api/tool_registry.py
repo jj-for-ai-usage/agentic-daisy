@@ -69,8 +69,16 @@ class ToolRegistry:
     def get(self, name: str) -> Optional[ToolDef]:
         return self._tools.get(name)
 
-    def list_api_params(self) -> List[Dict[str, Any]]:
-        return [t.to_api_param() for t in self._tools.values()]
+    def list_api_params(self, cache_last: bool = False) -> List[Dict[str, Any]]:
+        """Return tool dicts for messages.create(tools=[...]).
+
+        When *cache_last* is True, the last tool gets a ``cache_control``
+        marker so the entire tools array is cached by the Anthropic API.
+        """
+        params = [t.to_api_param() for t in self._tools.values()]
+        if cache_last and params:
+            params[-1]["cache_control"] = {"type": "ephemeral"}
+        return params
 
     def list_tool_summaries(self) -> List[Dict[str, str]]:
         """Return [{name, description}, ...] for building system prompts."""
