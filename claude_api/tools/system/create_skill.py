@@ -5,8 +5,9 @@ import re
 
 NAME = "create_skill"
 DESCRIPTION = (
-    "Create a new skill (playbook) .md file. Saves to ~/.daisy/skills/ "
-    "(persistent across sessions) by default, or .daisy/skills/ (project-level)."
+    "Create a new skill — a step-by-step playbook (.md file) that guides "
+    "you through a procedure. Saves to ~/.daisy/skills/ (persistent) by "
+    "default, or .daisy/skills/ (project-level)."
 )
 INPUT_SCHEMA = {
     "type": "object",

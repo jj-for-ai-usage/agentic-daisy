@@ -6,9 +6,9 @@ import textwrap
 
 NAME = "create_tool"
 DESCRIPTION = (
-    "Create a new custom tool .py file. Saves to ~/.daisy/tools/ "
-    "(persistent across sessions) by default, or .daisy/tools/ (project-level). "
-    "The tool is registered immediately and available in the current session."
+    "Create a new custom Python tool (callable function). Saves to "
+    "~/.daisy/tools/ (persistent) by default, or .daisy/tools/ (project-level). "
+    "Registered immediately in the current session."
 )
 INPUT_SCHEMA = {
     "type": "object",

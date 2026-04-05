@@ -21,6 +21,8 @@ Preserve ALL of the following if present:
 - Tool results that informed later decisions
 - Active tool names the assistant used or referenced
 - The assistant's role and system identity (Daisy, EDA assistant)
+- Current working directory and active project paths
+- Active task IDs and their current status
 
 Be concise but complete — this summary replaces the original messages.
 Do NOT add commentary or analysis beyond what was discussed."""
@@ -73,7 +75,7 @@ class ConversationCompactor:
         })
         history.append({
             "role": "assistant",
-            "content": "Understood. I have the conversation context from the summary.",
+            "content": "Understood. I have the prior context. I'll check memory and tasks if I need more detail.",
         })
         history.extend(to_keep)
 
@@ -122,7 +124,7 @@ class ConversationCompactor:
         try:
             response = self.client.messages.create(
                 model=self.model,
-                max_tokens=1024,
+                max_tokens=2048,
                 system=_COMPACTION_PROMPT,
                 messages=[{"role": "user", "content": conversation_text}],
             )

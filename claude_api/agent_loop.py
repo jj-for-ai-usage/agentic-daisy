@@ -297,8 +297,9 @@ def run_agent_loop(
                         "preview": result_str[:2000],
                         "message": (
                             "Output too large for context (%d chars). "
-                            "Full output saved to %s. Use run_command"
-                            "('head/tail/grep ...') or read_file to examine."
+                            "Full output saved to %s. "
+                            "Use run_command('head/tail/grep ...') or "
+                            "read_file to examine specific parts."
                             % (original_len, spill_path)
                         ),
                     })
