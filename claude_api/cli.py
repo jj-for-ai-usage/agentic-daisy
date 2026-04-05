@@ -192,7 +192,13 @@ def _interactive_loop(
     session_mgr: Optional[Any] = None,
     session_name: Optional[str] = None,
 ) -> None:
-    print("Agentic Daisy (interactive). Type 'exit' or Ctrl-D to quit.\n")
+    print("Agentic Daisy (interactive). Type 'exit' or Ctrl-D to quit.")
+    print("  Model: %s | Budget: %s | Tools: %d loaded" % (
+        config.model,
+        "$%.2f" % config.budget if config.budget else "unlimited",
+        len(registry.list_names()),
+    ))
+    print()
     while True:
         try:
             user_input = input("> ").strip()
