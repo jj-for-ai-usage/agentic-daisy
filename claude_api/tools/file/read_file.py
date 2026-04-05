@@ -14,12 +14,23 @@ INPUT_SCHEMA = {
 }
 
 MAX_READ_SIZE = 100_000
+MAX_FILE_SIZE = 10 * 1024 * 1024  # 10MB — refuse to open huge files
 
 
 def handler(path: str) -> str:
     path = os.path.expanduser(path)
     try:
         size = os.path.getsize(path)
+        if size > MAX_FILE_SIZE:
+            return json.dumps({
+                "error": (
+                    "File too large (%d bytes, max %d). "
+                    "Use run_command('head/tail/grep ...') to examine parts."
+                    % (size, MAX_FILE_SIZE)
+                ),
+                "path": path,
+                "size_bytes": size,
+            })
         with open(path, "r") as f:
             content = f.read(MAX_READ_SIZE + 1)
         truncated = len(content) > MAX_READ_SIZE

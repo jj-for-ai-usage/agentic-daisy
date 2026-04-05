@@ -169,8 +169,11 @@ class BatchStore:
         os.makedirs(results_dir, exist_ok=True)
         safe_name = _safe_filename(custom_id)
         path = os.path.join(results_dir, safe_name + ".json")
-        with open(path, "w") as f:
-            json.dump({"custom_id": custom_id, "status": status, "text": text}, f)
+        try:
+            with open(path, "w") as f:
+                json.dump({"custom_id": custom_id, "status": status, "text": text}, f)
+        except OSError as exc:
+            return json.dumps({"error": "Failed to write result: %s" % exc})
         return json.dumps({"status": "saved", "path": path})
 
     def read_result(self, batch_id: str, custom_id: str) -> str:

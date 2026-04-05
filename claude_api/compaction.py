@@ -91,7 +91,7 @@ class ConversationCompactor:
         # Format messages into readable text
         parts = []
         for msg in messages:
-            role = msg.get("role", "unknown").upper()
+            role = str(msg.get("role") or "unknown").upper()
             content = msg.get("content", "")
             if isinstance(content, list):
                 # Tool results or multi-block content
