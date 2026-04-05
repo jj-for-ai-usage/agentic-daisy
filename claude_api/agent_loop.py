@@ -145,9 +145,16 @@ def run_agent_loop(
             model=config.model,
             max_tokens=config.max_tokens,
             messages=conversation_history,
+            temperature=0.3,
         )
         if sys_prompt:
-            call_kwargs["system"] = sys_prompt
+            call_kwargs["system"] = [
+                {
+                    "type": "text",
+                    "text": sys_prompt,
+                    "cache_control": {"type": "ephemeral"},
+                }
+            ]
         if registry.has_tools():
             call_kwargs["tools"] = registry.list_api_params()
 
@@ -179,6 +186,10 @@ def run_agent_loop(
 
         last_input_tokens = response.usage.input_tokens
 
+        # Track cache tokens if available
+        cache_write = getattr(response.usage, "cache_creation_input_tokens", 0) or 0
+        cache_read = getattr(response.usage, "cache_read_input_tokens", 0) or 0
+
         audit.log_api_call(
             model=config.model,
             input_tokens=response.usage.input_tokens,
@@ -186,12 +197,16 @@ def run_agent_loop(
             stop_reason=response.stop_reason,
             latency_s=elapsed,
             round_num=round_num,
+            cache_write_tokens=cache_write,
+            cache_read_tokens=cache_read,
         )
         LOG.debug(
-            "Round %d: %d input / %d output tokens, stop=%s (%.2fs)",
+            "Round %d: %d input / %d output tokens (cache: %d write, %d read), stop=%s (%.2fs)",
             round_num,
             response.usage.input_tokens,
             response.usage.output_tokens,
+            cache_write,
+            cache_read,
             response.stop_reason,
             elapsed,
         )

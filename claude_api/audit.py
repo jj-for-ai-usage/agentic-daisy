@@ -37,6 +37,8 @@ class AuditLogger:
         self._warned_budget = False
         self._total_input_tokens = 0
         self._total_output_tokens = 0
+        self._total_cache_read_tokens = 0
+        self._total_cache_write_tokens = 0
         self._log_session_start(model)
 
     # ------------------------------------------------------------------
@@ -71,15 +73,21 @@ class AuditLogger:
         stop_reason: Optional[str],
         latency_s: float,
         round_num: int,
+        cache_write_tokens: int = 0,
+        cache_read_tokens: int = 0,
     ) -> None:
         self._total_input_tokens += input_tokens
         self._total_output_tokens += output_tokens
+        self._total_cache_read_tokens += cache_read_tokens
+        self._total_cache_write_tokens += cache_write_tokens
         self._write({
             "event": "api_call",
             "round_num": round_num,
             "model": model,
             "input_tokens": input_tokens,
             "output_tokens": output_tokens,
+            "cache_write_tokens": cache_write_tokens,
+            "cache_read_tokens": cache_read_tokens,
             "stop_reason": stop_reason,
             "latency_s": round(latency_s, 3),
         })
@@ -124,21 +132,36 @@ class AuditLogger:
     }
 
     def get_session_cost(self) -> float:
-        """Estimate session cost in USD based on token usage."""
+        """Estimate session cost in USD based on token usage.
+
+        Cached reads cost 90% less than normal input tokens.
+        Cache writes cost 25% more than normal input tokens.
+        Non-cached input tokens are charged at the standard rate.
+        """
         pricing = self._PRICING.get(self._model, {"input": 3.0, "output": 15.0})
+        input_rate = pricing["input"] / 1_000_000
+        output_rate = pricing["output"] / 1_000_000
+        # Non-cached input = total input minus cached reads
+        uncached_input = max(0, self._total_input_tokens - self._total_cache_read_tokens)
         cost = (
-            self._total_input_tokens * pricing["input"] / 1_000_000
-            + self._total_output_tokens * pricing["output"] / 1_000_000
+            uncached_input * input_rate
+            + self._total_cache_read_tokens * input_rate * 0.1    # 90% discount
+            + self._total_cache_write_tokens * input_rate * 1.25  # 25% surcharge
+            + self._total_output_tokens * output_rate
         )
         return cost
 
     def get_session_summary(self) -> str:
         """Human-readable session summary with tokens and cost."""
         cost = self.get_session_cost()
-        return (
-            "Tokens: %d in / %d out | Est. cost: $%.4f"
-            % (self._total_input_tokens, self._total_output_tokens, cost)
+        summary = "Tokens: %d in / %d out | Est. cost: $%.4f" % (
+            self._total_input_tokens, self._total_output_tokens, cost,
         )
+        if self._total_cache_read_tokens > 0:
+            summary += " | Cache: %d read, %d write" % (
+                self._total_cache_read_tokens, self._total_cache_write_tokens,
+            )
+        return summary
 
     def check_budget(self) -> str:
         """Check cost against budget. Returns 'ok', 'warning', or 'exceeded'."""
@@ -217,5 +240,7 @@ class AuditLogger:
             "event": "session_end",
             "total_input_tokens": self._total_input_tokens,
             "total_output_tokens": self._total_output_tokens,
+            "total_cache_read_tokens": self._total_cache_read_tokens,
+            "total_cache_write_tokens": self._total_cache_write_tokens,
             "estimated_cost_usd": round(cost, 6),
         })
