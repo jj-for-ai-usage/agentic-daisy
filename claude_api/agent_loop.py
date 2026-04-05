@@ -4,6 +4,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import re
 import time
 from typing import Any, Dict, List, Optional
 
@@ -84,7 +85,8 @@ def _spill_to_file(content: str, tool_name: str, config) -> str:
     workspace = getattr(config, "workspace_dir", "/tmp")
     os.makedirs(workspace, exist_ok=True)
     ts = time.strftime("%Y%m%d_%H%M%S")
-    filename = "tool_%s_%s.txt" % (tool_name, ts)
+    safe_name = re.sub(r'[^a-zA-Z0-9_\-]', '_', tool_name)
+    filename = "tool_%s_%s.txt" % (safe_name, ts)
     path = os.path.join(workspace, filename)
     with open(path, "w") as f:
         f.write(content)
