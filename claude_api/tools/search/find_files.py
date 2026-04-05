@@ -6,7 +6,7 @@ import os
 from typing import List
 
 NAME = "find_files"
-DESCRIPTION = "Find files by name using a glob pattern. Recursively walks directories."
+DESCRIPTION = "Find files by name using a glob pattern. Returns matching file paths. Recursively walks directories."
 INPUT_SCHEMA = {
     "type": "object",
     "properties": {

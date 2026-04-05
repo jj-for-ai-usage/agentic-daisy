@@ -4,7 +4,7 @@ import json
 import os
 
 NAME = "list_directory"
-DESCRIPTION = "List directory contents with file types and sizes."
+DESCRIPTION = "List a single directory's contents (non-recursive) with file types and sizes."
 INPUT_SCHEMA = {
     "type": "object",
     "properties": {

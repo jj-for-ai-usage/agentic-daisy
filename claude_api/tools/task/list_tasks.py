@@ -3,8 +3,7 @@
 NAME = "list_tasks"
 DESCRIPTION = (
     "List all tasks, optionally filtered by status or tag. "
-    "Returns summaries (use get_task for full detail). "
-    "Call with status='active' at session start to check for ongoing work."
+    "Returns summaries (use get_task for full detail)."
 )
 INPUT_SCHEMA = {
     "type": "object",

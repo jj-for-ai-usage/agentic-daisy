@@ -6,7 +6,7 @@ import os
 NAME = "edit_file"
 DESCRIPTION = (
     "Surgical find-and-replace in a file. Only changes the matched "
-    "text — much cheaper than rewriting the whole file with write_file. "
+    "text — preferred over write_file for targeted changes. "
     "The old_string must match exactly once."
 )
 INPUT_SCHEMA = {

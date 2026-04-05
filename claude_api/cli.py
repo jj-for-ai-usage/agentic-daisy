@@ -31,7 +31,13 @@ def parse_args() -> argparse.Namespace:
     ap.add_argument("--api-key", default=None,
                     help="Anthropic API key (overrides ANTHROPIC_API_KEY env var)")
     ap.add_argument("--model", default=DEFAULT_MODEL,
-                    help="Model to use (default: %s)" % DEFAULT_MODEL)
+                    help=(
+                        "Model to use (default: %s). "
+                        "Available: claude-haiku-4-5 (fastest, cheapest), "
+                        "claude-sonnet-4-5 (balanced), "
+                        "claude-opus-4 (most capable). "
+                        "Also accepts dated versions like claude-sonnet-4-5-20250514"
+                    ) % DEFAULT_MODEL)
     ap.add_argument("--max-tokens", type=int, default=DEFAULT_MAX_TOKENS,
                     help="Max response tokens (default: %d)" % DEFAULT_MAX_TOKENS)
     ap.add_argument("--system", default=None,
