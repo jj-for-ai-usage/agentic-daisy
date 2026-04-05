@@ -12,7 +12,7 @@ import anthropic
 
 from .audit import AuditLogger, BudgetExceededError
 from .config import DaisyConfig
-from .tool_registry import ToolRegistry
+from .tool_registry import ToolRegistry, _ToolTimeoutError, TOOL_TIMEOUT
 
 LOG = logging.getLogger("daisy")
 
@@ -285,6 +285,13 @@ def run_agent_loop(
                 except KeyError:
                     available = ", ".join(registry.list_names())
                     result_str = "Error: unknown tool '%s'. Available: %s" % (tool_name, available)
+                    is_error = True
+                except _ToolTimeoutError:
+                    result_str = (
+                        "Tool '%s' timed out after %ds. "
+                        "Try a smaller input or break the work into steps."
+                        % (tool_name, TOOL_TIMEOUT)
+                    )
                     is_error = True
                 except Exception as exc:
                     err_msg = str(exc)
