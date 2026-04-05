@@ -5,6 +5,7 @@ import json
 import logging
 import os
 import re
+import sys
 import time
 from typing import Any, Dict, List, Optional
 
@@ -160,7 +161,11 @@ def run_agent_loop(
                 conversation_history, last_input_tokens, audit,
             )
             if compacted:
+                print("[Daisy] compacting conversation...", file=sys.stderr, flush=True)
                 LOG.info("Conversation compacted to save tokens.")
+
+        if round_num == 0:
+            print("[Daisy] thinking...", file=sys.stderr, flush=True)
 
         call_kwargs: Dict[str, Any] = dict(
             model=config.model,
@@ -243,6 +248,11 @@ def run_agent_loop(
             )
         if budget_status == "warning":
             cost = audit.get_session_cost()
+            print(
+                "[Daisy] approaching budget: $%.4f / $%.2f"
+                % (cost, config.budget),
+                file=sys.stderr,
+            )
             LOG.warning(
                 "Session cost $%.4f approaching budget $%.2f",
                 cost, config.budget,
@@ -287,6 +297,7 @@ def run_agent_loop(
 
             tool_name = block.name
             tool_input = block.input
+            print("[Daisy] running %s..." % tool_name, file=sys.stderr, flush=True)
             LOG.info("[tool] %s", tool_name)
 
             # Check cache for read-only tools
@@ -368,4 +379,7 @@ def run_agent_loop(
 
         conversation_history.append({"role": "user", "content": tool_results})
 
-    return "[Daisy: max tool rounds (%d) reached, stopping]" % config.max_tool_rounds
+    return (
+        "[Daisy: reached %d tool rounds. Break the task into smaller steps, "
+        "or increase with --max-tool-rounds.]" % config.max_tool_rounds
+    )
