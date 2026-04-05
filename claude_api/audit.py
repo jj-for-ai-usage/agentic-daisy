@@ -1,4 +1,4 @@
-"""Agentic Daisy — Audit logging (JSON Lines, no content logged)."""
+"""Agentic Daisy -- Audit logging (JSON Lines, no content logged)."""
 from __future__ import annotations
 
 import json
@@ -122,7 +122,7 @@ class AuditLogger:
             "latency_s": round(latency_s, 3),
         })
 
-    # Pricing per million tokens (as of 2025 — update if model changes)
+    # Pricing per million tokens (as of 2025 -- update if model changes)
     _PRICING = {
         "claude-haiku-4-5":   {"input": 0.80,  "output": 4.00},
         "claude-sonnet-4-5":  {"input": 3.00,  "output": 15.00},

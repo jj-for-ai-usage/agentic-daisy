@@ -1,4 +1,4 @@
-"""Agentic Daisy — Core agentic conversation loop."""
+"""Agentic Daisy -- Core agentic conversation loop."""
 from __future__ import annotations
 
 import json
@@ -24,7 +24,7 @@ RETRY_BASE_DELAY = 2  # seconds; doubles each retry: 2, 4, 8, 16
 CONTEXT_TOKEN_WARNING = 150_000
 
 # Max chars for a tool result before spilling to file.
-# ~12,500 tokens — keeps individual results safe even with many rounds.
+# ~12,500 tokens -- keeps individual results safe even with many rounds.
 MAX_TOOL_RESULT = 50_000
 
 # Tools whose results can be cached within a single agent loop (read-only tools)
@@ -58,7 +58,7 @@ def _call_api_with_retry(client, call_kwargs: Dict[str, Any]) -> Any:
                 break
             delay = RETRY_BASE_DELAY * (2 ** attempt)
             LOG.warning(
-                "Connection error (attempt %d/%d): %s — retrying in %ds...",
+                "Connection error (attempt %d/%d): %s -- retrying in %ds...",
                 attempt + 1, MAX_API_RETRIES + 1, exc, delay,
             )
             time.sleep(delay)
@@ -75,7 +75,7 @@ def _call_api_with_retry(client, call_kwargs: Dict[str, Any]) -> Any:
                 )
                 time.sleep(delay)
             else:
-                raise  # 400, 401, 403 etc. — not transient
+                raise  # 400, 401, 403 etc. -- not transient
     raise last_exc  # type: ignore[misc]
 
 
@@ -184,9 +184,9 @@ def run_agent_loop(
         try:
             response = _call_api_with_retry(client, call_kwargs)
         except anthropic.AuthenticationError as exc:
-            return "[Daisy: authentication failed — check your API key: %s]" % exc
+            return "[Daisy: authentication failed -- check your API key: %s]" % exc
         except anthropic.APIConnectionError as exc:
-            return "[Daisy: connection failed after %d retries — %s]" % (
+            return "[Daisy: connection failed after %d retries -- %s]" % (
                 MAX_API_RETRIES + 1, exc,
             )
         except anthropic.APIStatusError as exc:
@@ -200,7 +200,7 @@ def run_agent_loop(
                 )
                 if compacted:
                     continue  # retry with compacted history
-            return "[Daisy: API error %d after retries — %s]" % (
+            return "[Daisy: API error %d after retries -- %s]" % (
                 exc.status_code, exc,
             )
         elapsed = time.time() - t0

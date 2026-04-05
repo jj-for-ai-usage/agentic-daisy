@@ -1,4 +1,4 @@
-"""Agentic Daisy — Custom tool loader (dynamic import from .py files)."""
+"""Agentic Daisy -- Custom tool loader (dynamic import from .py files)."""
 from __future__ import annotations
 
 import importlib.util
@@ -18,7 +18,7 @@ _REQUIRED_ATTRS = ("NAME", "DESCRIPTION", "INPUT_SCHEMA", "handler")
 class CustomToolLoader:
     """Scan directories for .py tool files and register them dynamically.
 
-    Directories are scanned in order — later directories override earlier
+    Directories are scanned in order -- later directories override earlier
     ones for the same tool name (project-level overrides user-level).
     """
 

@@ -1,4 +1,4 @@
-"""Memory tools — save, search, delete, list."""
+"""Memory tools -- save, search, delete, list."""
 from __future__ import annotations
 
 from claude_api.memory import MemoryStore

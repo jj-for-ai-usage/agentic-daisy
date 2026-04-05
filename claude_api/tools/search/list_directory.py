@@ -1,4 +1,4 @@
-"""Tool: list_directory — list directory contents with types and sizes."""
+"""Tool: list_directory -- list directory contents with types and sizes."""
 from __future__ import annotations
 import json
 import os

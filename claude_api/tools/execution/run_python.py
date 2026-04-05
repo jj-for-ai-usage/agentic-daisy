@@ -1,4 +1,4 @@
-"""Tool: run_python — execute a Python script."""
+"""Tool: run_python -- execute a Python script."""
 from __future__ import annotations
 import json
 import os

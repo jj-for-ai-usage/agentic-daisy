@@ -1,4 +1,4 @@
-"""Tool: repair_skills — scan, diagnose, and auto-fix skill definitions."""
+"""Tool: repair_skills -- scan, diagnose, and auto-fix skill definitions."""
 import json
 import os
 

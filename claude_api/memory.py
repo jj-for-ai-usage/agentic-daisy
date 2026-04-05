@@ -1,4 +1,4 @@
-"""Agentic Daisy — Persistent memory system (JSON file-backed)."""
+"""Agentic Daisy -- Persistent memory system (JSON file-backed)."""
 from __future__ import annotations
 
 import json
@@ -30,7 +30,7 @@ class MemoryStore:
                 self._memories = json.load(f)
         except (json.JSONDecodeError, ValueError) as exc:
             LOG.warning(
-                "Corrupted memory file %s: %s — starting with empty memories",
+                "Corrupted memory file %s: %s -- starting with empty memories",
                 self.memory_file, exc,
             )
             self._memories = []

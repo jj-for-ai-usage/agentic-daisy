@@ -1,4 +1,4 @@
-"""Tool: search_memory — find saved memories by keyword or tag."""
+"""Tool: search_memory -- find saved memories by keyword or tag."""
 NAME = "search_memory"
 DESCRIPTION = "Search saved memories by keyword (matches against keys and values) or by tag."
 INPUT_SCHEMA = {

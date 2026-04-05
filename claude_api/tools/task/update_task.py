@@ -1,4 +1,4 @@
-"""Tool: update_task — update an existing task's status, notes, or subtasks."""
+"""Tool: update_task -- update an existing task's status, notes, or subtasks."""
 
 NAME = "update_task"
 DESCRIPTION = (

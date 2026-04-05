@@ -1,4 +1,4 @@
-"""Tool: append_file — append content to end of a file."""
+"""Tool: append_file -- append content to end of a file."""
 from __future__ import annotations
 import json
 import os

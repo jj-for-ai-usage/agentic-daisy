@@ -1,4 +1,4 @@
-"""Task tools — create, update, list, get tasks."""
+"""Task tools -- create, update, list, get tasks."""
 from __future__ import annotations
 
 from claude_api.task_store import TaskStore

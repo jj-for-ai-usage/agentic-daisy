@@ -1,4 +1,4 @@
-"""Tool: edit_file — surgical find-and-replace in a file."""
+"""Tool: edit_file -- surgical find-and-replace in a file."""
 from __future__ import annotations
 import json
 import os
@@ -6,7 +6,7 @@ import os
 NAME = "edit_file"
 DESCRIPTION = (
     "Surgical find-and-replace in a file. Only changes the matched "
-    "text — preferred over write_file for targeted changes. "
+    "text -- preferred over write_file for targeted changes. "
     "The old_string must match exactly once."
 )
 INPUT_SCHEMA = {
@@ -30,7 +30,7 @@ def handler(path: str, old_string: str, new_string: str) -> str:
             return json.dumps({"error": "old_string not found in file", "path": path})
         if count > 1:
             return json.dumps({
-                "error": "old_string matches %d times — provide more context to make it unique" % count,
+                "error": "old_string matches %d times -- provide more context to make it unique" % count,
                 "path": path, "matches": count,
             })
         new_content = content.replace(old_string, new_string, 1)

@@ -1,4 +1,4 @@
-"""Tool: submit_batch — submit independent requests for async 50% cost processing."""
+"""Tool: submit_batch -- submit independent requests for async 50% cost processing."""
 import json
 import logging
 
@@ -7,7 +7,7 @@ LOG = logging.getLogger("daisy")
 NAME = "submit_batch"
 DESCRIPTION = (
     "Submit independent Claude API requests for async processing at 50% cost. "
-    "Batch prompts have NO tool access — include all pre-extracted data in the prompt. "
+    "Batch prompts have NO tool access -- include all pre-extracted data in the prompt. "
     "Preprocess with run_command/run_python first to minimize tokens. "
     "Automatically creates/updates a task to track the batch."
 )
@@ -16,7 +16,7 @@ INPUT_SCHEMA = {
     "properties": {
         "task_id": {
             "type": "string",
-            "description": "Link to existing task (optional — creates new task if omitted)",
+            "description": "Link to existing task (optional -- creates new task if omitted)",
         },
         "task_name": {
             "type": "string",
@@ -37,7 +37,7 @@ INPUT_SCHEMA = {
                     },
                     "system": {
                         "type": "string",
-                        "description": "System prompt (keep minimal — default provided)",
+                        "description": "System prompt (keep minimal -- default provided)",
                     },
                     "prompt": {
                         "type": "string",

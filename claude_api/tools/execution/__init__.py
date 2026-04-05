@@ -1,4 +1,4 @@
-"""Execution tools — run_command, run_python."""
+"""Execution tools -- run_command, run_python."""
 from __future__ import annotations
 
 from . import run_command, run_python

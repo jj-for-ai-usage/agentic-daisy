@@ -1,4 +1,4 @@
-"""Agentic Daisy — CLI entry point."""
+"""Agentic Daisy -- CLI entry point."""
 from __future__ import annotations
 
 import argparse
@@ -20,7 +20,7 @@ LOG = logging.getLogger("daisy")
 
 def parse_args() -> argparse.Namespace:
     ap = argparse.ArgumentParser(
-        description="Agentic Daisy — Air-gapped Claude toolkit with tool use.",
+        description="Agentic Daisy -- Air-gapped Claude toolkit with tool use.",
     )
     ap.add_argument(
         "message",

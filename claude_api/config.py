@@ -1,4 +1,4 @@
-"""Agentic Daisy — Configuration."""
+"""Agentic Daisy -- Configuration."""
 from __future__ import annotations
 
 import logging
@@ -123,7 +123,7 @@ class DaisyConfig:
                 "max_tool_rounds must be > 0, got %d" % self.max_tool_rounds
             )
         if self.model not in self._KNOWN_MODELS:
-            # Don't block — dated versions like claude-sonnet-4-5-20250514 are valid
+            # Don't block -- dated versions like claude-sonnet-4-5-20250514 are valid
             LOG.warning(
                 "Unknown model '%s'. Known: %s",
                 self.model, ", ".join(sorted(self._KNOWN_MODELS)),

@@ -1,4 +1,4 @@
-"""Tool: load_skill — load a domain skill/playbook by name."""
+"""Tool: load_skill -- load a domain skill/playbook by name."""
 NAME = "load_skill"
 DESCRIPTION = (
     "Load a domain skill (playbook) by name to get the full step-by-step "

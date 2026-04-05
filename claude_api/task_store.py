@@ -1,4 +1,4 @@
-"""Agentic Daisy — Persistent task tracker (structured, multi-session)."""
+"""Agentic Daisy -- Persistent task tracker (structured, multi-session)."""
 from __future__ import annotations
 
 import json
@@ -28,7 +28,7 @@ class TaskStore:
         self._tasks: List[Dict[str, Any]] = []
         self._load()
 
-    # ── persistence ──────────────────────────────────────────
+    # -- persistence ------------------------------------------
 
     def _load(self) -> None:
         if not os.path.exists(self._file):
@@ -54,7 +54,7 @@ class TaskStore:
                 pass
             raise
 
-    # ── ID generation ────────────────────────────────────────
+    # -- ID generation ----------------------------------------
 
     def _generate_id(self) -> str:
         date_str = datetime.now(timezone.utc).strftime("%Y%m%d")
@@ -62,7 +62,7 @@ class TaskStore:
         seq = len(existing) + 1
         return "task_%s_%03d" % (date_str, seq)
 
-    # ── CRUD ─────────────────────────────────────────────────
+    # -- CRUD -------------------------------------------------
 
     def create_task(
         self,
@@ -180,7 +180,7 @@ class TaskStore:
             return json.dumps({"error": "Task '%s' not found" % task_id})
         return json.dumps({"task": task})
 
-    # ── helpers ───────────────────────────────────────────────
+    # -- helpers -----------------------------------------------
 
     def _find(self, task_id: str) -> Optional[Dict[str, Any]]:
         for t in self._tasks:

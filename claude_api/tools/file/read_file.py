@@ -1,4 +1,4 @@
-"""Tool: read_file — read file contents."""
+"""Tool: read_file -- read file contents."""
 from __future__ import annotations
 import json
 import os
@@ -14,7 +14,7 @@ INPUT_SCHEMA = {
 }
 
 MAX_READ_SIZE = 100_000
-MAX_FILE_SIZE = 10 * 1024 * 1024  # 10MB — refuse to open huge files
+MAX_FILE_SIZE = 10 * 1024 * 1024  # 10MB -- refuse to open huge files
 
 
 def handler(path: str) -> str:

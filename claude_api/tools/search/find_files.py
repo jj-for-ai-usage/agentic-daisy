@@ -1,4 +1,4 @@
-"""Tool: find_files — find files by glob pattern."""
+"""Tool: find_files -- find files by glob pattern."""
 from __future__ import annotations
 import fnmatch
 import json

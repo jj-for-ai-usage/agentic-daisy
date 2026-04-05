@@ -1,4 +1,4 @@
-"""Batch tools — submit, check, get results."""
+"""Batch tools -- submit, check, get results."""
 from __future__ import annotations
 
 from claude_api.batch_store import BatchStore

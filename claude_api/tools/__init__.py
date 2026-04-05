@@ -1,4 +1,4 @@
-"""Agentic Daisy — Tool loading and discovery."""
+"""Agentic Daisy -- Tool loading and discovery."""
 from __future__ import annotations
 
 import logging

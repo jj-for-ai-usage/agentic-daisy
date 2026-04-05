@@ -1,4 +1,4 @@
-"""Tool: delete_memory — remove a saved memory by key."""
+"""Tool: delete_memory -- remove a saved memory by key."""
 NAME = "delete_memory"
 DESCRIPTION = "Delete a saved memory by its key."
 INPUT_SCHEMA = {

@@ -1,4 +1,4 @@
-"""Agentic Daisy — Tool registration and execution."""
+"""Agentic Daisy -- Tool registration and execution."""
 from __future__ import annotations
 
 import inspect

@@ -1,4 +1,4 @@
-"""Tool: create_task — create a new tracked task."""
+"""Tool: create_task -- create a new tracked task."""
 
 NAME = "create_task"
 DESCRIPTION = (

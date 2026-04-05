@@ -1,4 +1,4 @@
-"""File I/O tools — read, write, edit, append."""
+"""File I/O tools -- read, write, edit, append."""
 from __future__ import annotations
 
 from . import read_file, write_file, edit_file, append_file

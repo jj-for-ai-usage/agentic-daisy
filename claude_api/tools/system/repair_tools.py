@@ -1,4 +1,4 @@
-"""Tool: repair_tools — scan, diagnose, and auto-fix custom tool definitions."""
+"""Tool: repair_tools -- scan, diagnose, and auto-fix custom tool definitions."""
 import json
 import os
 import re

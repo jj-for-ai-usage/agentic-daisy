@@ -1,4 +1,4 @@
-"""Tool: get_task — get full detail of a specific task."""
+"""Tool: get_task -- get full detail of a specific task."""
 
 NAME = "get_task"
 DESCRIPTION = (

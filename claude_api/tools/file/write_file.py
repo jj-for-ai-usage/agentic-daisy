@@ -1,4 +1,4 @@
-"""Tool: write_file — write content to a file."""
+"""Tool: write_file -- write content to a file."""
 from __future__ import annotations
 import json
 import os

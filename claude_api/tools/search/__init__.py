@@ -1,4 +1,4 @@
-"""Search and navigation tools — search_files, find_files, directory_tree, list_directory."""
+"""Search and navigation tools -- search_files, find_files, directory_tree, list_directory."""
 from __future__ import annotations
 
 from . import search_files, find_files, directory_tree, list_directory

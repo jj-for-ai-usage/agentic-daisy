@@ -1,4 +1,4 @@
-"""Tool: create_tool — create a new custom tool .py file."""
+"""Tool: create_tool -- create a new custom tool .py file."""
 import json
 import os
 import re
@@ -73,7 +73,7 @@ def make_handler(config=None, registry=None, **kwargs):
         schema_str = json.dumps(input_schema, indent=2)
         indented_code = textwrap.indent(handler_code.strip(), "    ")
         content = (
-            '"""Custom tool: %s — %s"""\n'
+            '"""Custom tool: %s -- %s"""\n'
             "import json\n"
             "\n"
             "NAME = %r\n"

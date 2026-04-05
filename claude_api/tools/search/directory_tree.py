@@ -1,4 +1,4 @@
-"""Tool: directory_tree — recursive directory tree with depth limit."""
+"""Tool: directory_tree -- recursive directory tree with depth limit."""
 from __future__ import annotations
 import json
 import os

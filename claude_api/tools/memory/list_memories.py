@@ -1,4 +1,4 @@
-"""Tool: list_memories — list all saved memory keys with metadata."""
+"""Tool: list_memories -- list all saved memory keys with metadata."""
 NAME = "list_memories"
 DESCRIPTION = "List all saved memory keys with their tags and last-updated timestamps."
 INPUT_SCHEMA = {"type": "object", "properties": {}}

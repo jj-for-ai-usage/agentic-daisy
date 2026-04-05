@@ -1,4 +1,4 @@
-"""Tool: search_files — regex content search across files."""
+"""Tool: search_files -- regex content search across files."""
 from __future__ import annotations
 import fnmatch
 import json

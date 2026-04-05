@@ -1,4 +1,4 @@
-"""Agentic Daisy — Persistent batch job tracker."""
+"""Agentic Daisy -- Persistent batch job tracker."""
 from __future__ import annotations
 
 import json
@@ -36,7 +36,7 @@ class BatchStore:
         self._batches: List[Dict[str, Any]] = []
         self._load()
 
-    # ── persistence ──────────────────────────────────────────
+    # -- persistence ------------------------------------------
 
     def _load(self) -> None:
         if not os.path.exists(self._file):
@@ -62,7 +62,7 @@ class BatchStore:
                 pass
             raise
 
-    # ── ID generation ────────────────────────────────────────
+    # -- ID generation ----------------------------------------
 
     def _generate_id(self) -> str:
         date_str = datetime.now(timezone.utc).strftime("%Y%m%d")
@@ -71,7 +71,7 @@ class BatchStore:
         seq = len(existing) + 1
         return "batch_%s_%03d" % (date_str, seq)
 
-    # ── CRUD ─────────────────────────────────────────────────
+    # -- CRUD -------------------------------------------------
 
     def create_batch(
         self,
@@ -153,7 +153,7 @@ class BatchStore:
         """Return all batches with status 'processing' (for system prompt summary)."""
         return [b for b in self._batches if b["status"] == "processing"]
 
-    # ── result file I/O ──────────────────────────────────────
+    # -- result file I/O --------------------------------------
 
     def save_result(
         self,
@@ -190,7 +190,7 @@ class BatchStore:
         except OSError as exc:
             return json.dumps({"error": str(exc)})
 
-    # ── helpers ───────────────────────────────────────────────
+    # -- helpers -----------------------------------------------
 
     def _find(self, batch_id: str) -> Optional[Dict[str, Any]]:
         for b in self._batches:

@@ -1,4 +1,4 @@
-"""Tool: check_batch — poll batch status and auto-retrieve results."""
+"""Tool: check_batch -- poll batch status and auto-retrieve results."""
 import json
 import logging
 

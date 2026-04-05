@@ -1,4 +1,4 @@
-"""Agentic Daisy — Skill/playbook loader (summary index + on-demand loading)."""
+"""Agentic Daisy -- Skill/playbook loader (summary index + on-demand loading)."""
 from __future__ import annotations
 
 import json
@@ -13,7 +13,7 @@ class SkillLoader:
     """Loads skill .md files from one or more directories. Parses frontmatter
     for the index (name, summary, trigger) and serves full content on demand.
 
-    When multiple directories are given, they are scanned in order — later
+    When multiple directories are given, they are scanned in order -- later
     directories override earlier ones for the same skill name. This lets
     project-level skills (.daisy/skills/) override user-level (~/.daisy/skills/).
     """
@@ -93,7 +93,7 @@ class SkillLoader:
         try:
             with open(path, "r") as f:
                 content = f.read()
-            # Strip frontmatter — return only the body
+            # Strip frontmatter -- return only the body
             if content.startswith("---"):
                 parts = content.split("---", 2)
                 if len(parts) >= 3:

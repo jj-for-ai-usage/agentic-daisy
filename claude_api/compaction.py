@@ -1,4 +1,4 @@
-"""Agentic Daisy — Conversation compaction (auto-summarize old turns)."""
+"""Agentic Daisy -- Conversation compaction (auto-summarize old turns)."""
 from __future__ import annotations
 
 import logging
@@ -24,7 +24,7 @@ Preserve ALL of the following if present:
 - Current working directory and active project paths
 - Active task IDs and their current status
 
-Be concise but complete — this summary replaces the original messages.
+Be concise but complete -- this summary replaces the original messages.
 Do NOT add commentary or analysis beyond what was discussed."""
 
 
@@ -62,7 +62,7 @@ class ConversationCompactor:
         messages_removed = len(to_summarize)
 
         LOG.info(
-            "Compacting conversation: %d messages → summary + %d recent",
+            "Compacting conversation: %d messages -> summary + %d recent",
             len(history), len(to_keep),
         )
 
@@ -132,7 +132,7 @@ class ConversationCompactor:
                 raise ValueError("Empty response from compaction model")
             return response.content[0].text
         except Exception as exc:
-            LOG.warning("Compaction API call failed: %s — keeping history as-is", exc)
+            LOG.warning("Compaction API call failed: %s -- keeping history as-is", exc)
             # Return a minimal fallback summary
             return "[Compaction failed: %s. Previous conversation had %d messages.]" % (
                 exc, len(parts),

@@ -1,4 +1,4 @@
-"""Tool: get_env — system environment snapshot."""
+"""Tool: get_env -- system environment snapshot."""
 from __future__ import annotations
 import json
 import os

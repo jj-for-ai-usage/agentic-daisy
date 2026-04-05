@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Agentic Daisy — Full System Test Suite.
+"""Agentic Daisy -- Full System Test Suite.
 
 Usage:
     python3 -m claude_api.test_suite              # offline tests only
@@ -20,7 +20,7 @@ import time
 import traceback
 from typing import List, Tuple
 
-# ── Test infrastructure ────────────────────────────────────
+# -- Test infrastructure ------------------------------------
 
 PASSED = 0
 FAILED = 0
@@ -42,7 +42,7 @@ def run_test(fn, skip_reason: str = ""):
     if skip_reason:
         SKIPPED += 1
         RESULTS.append((name, "SKIP", skip_reason))
-        print("  [ SKIP ] %s — %s" % (name, skip_reason))
+        print("  [ SKIP ] %s -- %s" % (name, skip_reason))
         return
     try:
         fn()
@@ -52,15 +52,15 @@ def run_test(fn, skip_reason: str = ""):
     except AssertionError as exc:
         FAILED += 1
         RESULTS.append((name, "FAIL", str(exc)))
-        print("  [ FAIL ] %s — %s" % (name, exc))
+        print("  [ FAIL ] %s -- %s" % (name, exc))
     except Exception as exc:
         FAILED += 1
         detail = "%s: %s" % (type(exc).__name__, exc)
         RESULTS.append((name, "FAIL", detail))
-        print("  [ FAIL ] %s — %s" % (name, detail))
+        print("  [ FAIL ] %s -- %s" % (name, detail))
 
 
-# ── Offline Tests (no API key needed) ─────────────────────
+# -- Offline Tests (no API key needed) ---------------------
 
 @test("Import all modules")
 def test_imports():
@@ -1002,12 +1002,12 @@ def test_compaction():
         {"role": "user", "content": "msg4"},
         {"role": "assistant", "content": "resp4"},
     ]
-    # Threshold too high — should not compact
+    # Threshold too high -- should not compact
     result = compactor.maybe_compact(history, last_input_tokens=50)
     assert result is False
     assert len(history) == 8
 
-    # Threshold exceeded — should compact
+    # Threshold exceeded -- should compact
     result = compactor.maybe_compact(history, last_input_tokens=200)
     assert result is True
     # Should have: summary (user) + ack (assistant) + last 4 messages
@@ -1065,7 +1065,7 @@ def test_cli_list_sessions():
     assert result.returncode == 0, "daisy --list-sessions failed: %s" % result.stderr
 
 
-# ── Online Tests (API key required) ───────────────────────
+# -- Online Tests (API key required) -----------------------
 
 @test("Online: basic API call (no tools)")
 def test_online_basic():
@@ -1121,7 +1121,7 @@ def test_online_tool_use():
     shutil.rmtree(d)
 
 
-# ── Test runner ────────────────────────────────────────────
+# -- Test runner --------------------------------------------
 
 OFFLINE_TESTS = [
     test_imports,

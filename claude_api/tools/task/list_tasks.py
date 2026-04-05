@@ -1,4 +1,4 @@
-"""Tool: list_tasks — list tracked tasks with optional filtering."""
+"""Tool: list_tasks -- list tracked tasks with optional filtering."""
 
 NAME = "list_tasks"
 DESCRIPTION = (

@@ -1,4 +1,4 @@
-"""System tools — environment info, skill loading, skill/tool creation, repair."""
+"""System tools -- environment info, skill loading, skill/tool creation, repair."""
 from __future__ import annotations
 
 from . import get_env, load_skill, create_skill, create_tool, repair_tools, repair_skills

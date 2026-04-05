@@ -1,4 +1,4 @@
-"""Tool: get_batch_results — retrieve results from a completed batch."""
+"""Tool: get_batch_results -- retrieve results from a completed batch."""
 import json
 
 NAME = "get_batch_results"

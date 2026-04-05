@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Agentic Daisy — Claude API Connectivity Test
+Agentic Daisy -- Claude API Connectivity Test
 ----------------------------------------------
 Validates that the Python environment can reach the Anthropic API
 from within a data-protected environment.
@@ -24,7 +24,7 @@ import sys
 import time
 
 # ---------------------------------------------------------------------------
-# sys.path setup — ensure vendored libs are importable
+# sys.path setup -- ensure vendored libs are importable
 # ---------------------------------------------------------------------------
 _THIS_DIR = os.path.dirname(os.path.abspath(__file__))
 _PARENT = os.path.dirname(_THIS_DIR)
@@ -115,7 +115,7 @@ def main() -> None:
         text = response.content[0].text if response.content else "(empty)"
         print()
         print("=" * 60)
-        print("  CLAUDE API TEST — SUCCESS")
+        print("  CLAUDE API TEST -- SUCCESS")
         print("=" * 60)
         print(f"  Model        : {response.model}")
         print(f"  Input tokens : {response.usage.input_tokens}")
@@ -128,12 +128,12 @@ def main() -> None:
         print()
 
     except anthropic.AuthenticationError as exc:
-        LOG.error("Authentication failed — check your API key.")
+        LOG.error("Authentication failed -- check your API key.")
         LOG.error("Detail: %s", exc)
         sys.exit(2)
 
     except anthropic.APIConnectionError as exc:
-        LOG.error("Cannot reach the Anthropic API — network or proxy issue.")
+        LOG.error("Cannot reach the Anthropic API -- network or proxy issue.")
         LOG.error("Detail: %s", exc)
         sys.exit(3)
 

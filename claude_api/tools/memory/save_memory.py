@@ -1,4 +1,4 @@
-"""Tool: save_memory — persist information across conversations."""
+"""Tool: save_memory -- persist information across conversations."""
 NAME = "save_memory"
 DESCRIPTION = (
     "Save a piece of information for later retrieval. "

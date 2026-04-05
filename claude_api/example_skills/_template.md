@@ -10,14 +10,14 @@ trigger: "phrases that should trigger this skill", "alternate phrasing"
 Describe what situations this skill applies to.
 
 ## Steps
-1. First thing to check — which file, what command, what to look for
-2. Second step — how to interpret the result from step 1
-3. Third step — deeper investigation if needed
+1. First thing to check -- which file, what command, what to look for
+2. Second step -- how to interpret the result from step 1
+3. Third step -- deeper investigation if needed
 4. Continue as needed...
 
 ## Key Files
-- path/to/important/file.log — what this file contains
-- path/to/another/file.rpt — when to check this
+- path/to/important/file.log -- what this file contains
+- path/to/another/file.rpt -- when to check this
 
 ## Example Commands
 ```

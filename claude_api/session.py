@@ -1,4 +1,4 @@
-"""Agentic Daisy — Session persistence (save/resume conversations)."""
+"""Agentic Daisy -- Session persistence (save/resume conversations)."""
 from __future__ import annotations
 
 import json
