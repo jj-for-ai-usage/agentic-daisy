@@ -19,6 +19,8 @@ Preserve ALL of the following if present:
 - Decisions made and their rationale
 - Memory keys that were saved (save_memory calls)
 - Tool results that informed later decisions
+- Active tool names the assistant used or referenced
+- The assistant's role and system identity (Daisy, EDA assistant)
 
 Be concise but complete — this summary replaces the original messages.
 Do NOT add commentary or analysis beyond what was discussed."""
@@ -124,6 +126,8 @@ class ConversationCompactor:
                 system=_COMPACTION_PROMPT,
                 messages=[{"role": "user", "content": conversation_text}],
             )
+            if not response.content:
+                raise ValueError("Empty response from compaction model")
             return response.content[0].text
         except Exception as exc:
             LOG.warning("Compaction API call failed: %s — keeping history as-is", exc)

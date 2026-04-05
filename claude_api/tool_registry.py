@@ -3,9 +3,18 @@ from __future__ import annotations
 
 import inspect
 import logging
+import signal
 from typing import Any, Callable, Dict, List, Optional
 
 LOG = logging.getLogger("daisy")
+
+# Timeout for custom tool execution (seconds). Built-in tools like
+# run_command/run_python enforce their own timeouts via subprocess.
+TOOL_TIMEOUT = 120
+
+
+class _ToolTimeoutError(Exception):
+    """Raised when a tool handler exceeds TOOL_TIMEOUT."""
 
 
 class ToolDef:
@@ -73,6 +82,10 @@ class ToolRegistry:
     def has_tools(self) -> bool:
         return len(self._tools) > 0
 
+    def list_names(self) -> List[str]:
+        """Return sorted list of registered tool names."""
+        return sorted(self._tools.keys())
+
     def execute(self, name: str, input_args: Dict[str, Any]) -> str:
         """Execute a tool by name. Returns result as string."""
         tool_def = self._tools[name]
@@ -85,4 +98,19 @@ class ToolRegistry:
         else:
             accepted = {p.name for p in params.values()}
             filtered = {k: v for k, v in input_args.items() if k in accepted}
-        return tool_def.handler(**filtered)
+
+        # Apply signal-based timeout (Unix main thread only)
+        use_alarm = hasattr(signal, "SIGALRM")
+        if use_alarm:
+            def _alarm_handler(signum, frame):
+                raise _ToolTimeoutError(
+                    "Tool '%s' timed out after %ds" % (name, TOOL_TIMEOUT)
+                )
+            old_handler = signal.signal(signal.SIGALRM, _alarm_handler)
+            signal.alarm(TOOL_TIMEOUT)
+        try:
+            return tool_def.handler(**filtered)
+        finally:
+            if use_alarm:
+                signal.alarm(0)
+                signal.signal(signal.SIGALRM, old_handler)

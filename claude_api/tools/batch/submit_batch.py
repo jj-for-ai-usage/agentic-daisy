@@ -57,7 +57,11 @@ INPUT_SCHEMA = {
     "required": ["requests"],
 }
 
-_DEFAULT_BATCH_SYSTEM = "You are an EDA analysis assistant. Be concise and data-driven."
+_DEFAULT_BATCH_SYSTEM = (
+    "You are an EDA analysis assistant. Be concise and data-driven. "
+    "Respond with structured analysis: findings, metrics, and recommendations. "
+    "Use markdown tables for numerical comparisons. Do not use tool calls."
+)
 _TOKEN_WARN_THRESHOLD = 8000  # ~32KB of text
 
 

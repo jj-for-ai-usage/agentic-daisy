@@ -50,6 +50,13 @@ def make_handler(config=None, registry=None, **kwargs):
     def _handler(name, description, input_schema, handler_code, location="user"):
         # Sanitize name
         safe_name = re.sub(r"[^a-z0-9_]", "_", name.lower())
+        # Check for name collision with existing tools
+        if registry is not None and registry.get(safe_name) is not None:
+            return json.dumps({
+                "status": "name_conflict",
+                "name": safe_name,
+                "error": "A tool named '%s' already exists. Choose a different name." % safe_name,
+            })
         # Ensure input_schema has required "type" field for Anthropic API
         if not isinstance(input_schema, dict):
             input_schema = {"type": "object"}
@@ -77,6 +84,16 @@ def make_handler(config=None, registry=None, **kwargs):
             "def handler(**kwargs):\n"
             "%s\n"
         ) % (safe_name, description, safe_name, description, schema_str, indented_code)
+        # Pre-validate syntax before writing to disk
+        try:
+            compile(content, safe_name + ".py", "exec")
+        except SyntaxError as exc:
+            return json.dumps({
+                "status": "syntax_error",
+                "name": safe_name,
+                "error": "Generated code has syntax error on line %s: %s" % (exc.lineno, exc.msg),
+                "hint": "Fix the handler_code and try again. Check for unmatched quotes or invalid indentation.",
+            })
         with open(path, "w") as f:
             f.write(content)
         # Dynamically import and register immediately
@@ -88,11 +105,16 @@ def make_handler(config=None, registry=None, **kwargs):
                 registry.register(mod.NAME, mod.DESCRIPTION,
                                   mod.INPUT_SCHEMA, mod.handler)
         except Exception as exc:
+            # Remove broken file to avoid confusing state on next startup
+            try:
+                os.remove(path)
+            except OSError:
+                pass
             return json.dumps({
-                "status": "created_with_error",
+                "status": "import_failed",
                 "name": safe_name,
-                "path": path,
-                "error": "File written but failed to load: %s" % exc,
+                "error": "Code is syntactically valid but failed to import: %s" % exc,
+                "hint": "Check that all imports are available in the environment.",
             })
         return json.dumps({
             "status": "created",

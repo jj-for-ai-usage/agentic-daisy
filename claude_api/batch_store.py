@@ -4,6 +4,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import re
 import tempfile
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
@@ -11,6 +12,13 @@ from typing import Any, Dict, List, Optional
 LOG = logging.getLogger("daisy")
 
 _VALID_STATUSES = ("processing", "ended", "results_retrieved", "expired", "failed")
+
+
+def _safe_filename(custom_id: str) -> str:
+    """Sanitize custom_id for safe use as a filename."""
+    safe = re.sub(r'[^a-zA-Z0-9_\-.]', '_', custom_id)
+    safe = safe.strip('.')[:200]
+    return safe or "unnamed"
 
 
 class BatchStore:
@@ -142,7 +150,7 @@ class BatchStore:
         return json.dumps({"count": len(summaries), "batches": summaries})
 
     def get_pending_batches(self) -> List[Dict[str, Any]]:
-        """Return all batches with status 'processing' (for prompt injection)."""
+        """Return all batches with status 'processing' (for system prompt summary)."""
         return [b for b in self._batches if b["status"] == "processing"]
 
     # ── result file I/O ──────────────────────────────────────
@@ -159,8 +167,7 @@ class BatchStore:
             return json.dumps({"error": "Batch '%s' not found" % batch_id})
         results_dir = batch["results_dir"]
         os.makedirs(results_dir, exist_ok=True)
-        # Sanitize custom_id for filename
-        safe_name = custom_id.replace("/", "_").replace("..", "_")
+        safe_name = _safe_filename(custom_id)
         path = os.path.join(results_dir, safe_name + ".json")
         with open(path, "w") as f:
             json.dump({"custom_id": custom_id, "status": status, "text": text}, f)
@@ -170,7 +177,7 @@ class BatchStore:
         batch = self._find(batch_id)
         if batch is None:
             return json.dumps({"error": "Batch '%s' not found" % batch_id})
-        safe_name = custom_id.replace("/", "_").replace("..", "_")
+        safe_name = _safe_filename(custom_id)
         path = os.path.join(batch["results_dir"], safe_name + ".json")
         if not os.path.exists(path):
             return json.dumps({"error": "Result '%s' not found" % custom_id})

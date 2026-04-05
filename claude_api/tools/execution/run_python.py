@@ -66,7 +66,7 @@ def make_handler(audit=None, interactive=False, workspace_dir="", **kwargs):
         t0 = time.time()
         timed_out = False
         try:
-            python_cmd = os.environ.get("DAISY_PYTHON", "python3::3.9.9")
+            python_cmd = os.environ.get("DAISY_PYTHON", "python3")
             proc = subprocess.run(
                 [python_cmd, script_path], capture_output=True, text=True,
                 timeout=timeout, env=_safe_env(),
@@ -85,10 +85,11 @@ def make_handler(audit=None, interactive=False, workspace_dir="", **kwargs):
             stderr = "Failed to execute: %s" % exc
 
         elapsed = time.time() - t0
-        audit.log_shell_command(
-            command="%s <script:%d lines>" % (python_cmd, len(code.splitlines())),
-            exit_code=exit_code, timed_out=timed_out, latency_s=elapsed,
-        )
+        if audit is not None:
+            audit.log_shell_command(
+                command="%s <script:%d lines>" % (python_cmd, len(code.splitlines())),
+                exit_code=exit_code, timed_out=timed_out, latency_s=elapsed,
+            )
 
         return json.dumps({
             "exit_code": exit_code,

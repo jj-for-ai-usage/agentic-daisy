@@ -37,6 +37,13 @@ INPUT_SCHEMA = {
 }
 
 
+def _yaml_safe(val: str) -> str:
+    """Quote a YAML value if it contains special characters."""
+    if any(c in val for c in ':"\'\\#\n{}[]|>&!%@'):
+        return '"%s"' % val.replace('\\', '\\\\').replace('"', '\\"').replace('\n', ' ')
+    return val
+
+
 def make_handler(config=None, skill_loader=None, **kwargs):
     from claude_api.config import USER_SKILLS_DIR
 
@@ -53,11 +60,11 @@ def make_handler(config=None, skill_loader=None, **kwargs):
         # Build file content with frontmatter
         lines = [
             "---",
-            "name: %s" % safe_name,
-            "summary: %s" % summary,
+            "name: %s" % _yaml_safe(safe_name),
+            "summary: %s" % _yaml_safe(summary),
         ]
         if trigger:
-            lines.append('trigger: "%s"' % trigger)
+            lines.append("trigger: %s" % _yaml_safe(trigger))
         lines.append("---")
         lines.append("")
         lines.append(content)

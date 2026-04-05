@@ -59,8 +59,9 @@ def make_handler(audit=None, interactive=False, **kwargs):
             stderr = "Failed to execute: %s" % exc
 
         elapsed = time.time() - t0
-        audit.log_shell_command(command=command, exit_code=exit_code,
-                                timed_out=timed_out, latency_s=elapsed)
+        if audit is not None:
+            audit.log_shell_command(command=command, exit_code=exit_code,
+                                    timed_out=timed_out, latency_s=elapsed)
 
         return json.dumps({
             "exit_code": exit_code,

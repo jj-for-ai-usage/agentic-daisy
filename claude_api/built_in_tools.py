@@ -99,6 +99,21 @@ def build_default_system_prompt(registry: ToolRegistry, config: DaisyConfig = No
         "- If you see warnings about skipped custom tools or skills at startup, "
         "use repair_tools(fix=true) or repair_skills(fix=true) to auto-fix.\n"
         "- Run with fix=false first for a dry-run diagnosis if unsure.\n"
+        "- If create_tool returns 'syntax_error', the code was NOT saved. Fix "
+        "the handler_code and retry create_tool.\n"
+        "- If create_tool returns 'import_failed', the code was valid Python "
+        "but could not run (e.g., missing import). Fix and retry.\n"
+        "- If create_tool returns 'name_conflict', choose a different tool name.\n"
+        "\n"
+        "### Error Handling\n"
+        "- If a tool returns is_error=true, read the error message carefully.\n"
+        "- For transient errors (timeout, connection), retry once with same "
+        "parameters.\n"
+        "- For input errors (missing file, bad path), adjust parameters and "
+        "retry.\n"
+        "- For unknown tool errors, check the tool name against the list above.\n"
+        "- NEVER show raw error traces to the user. Summarize what went wrong "
+        "and what you are doing to fix it.\n"
         "\n"
         "### Batch Processing (50%% cost reduction)\n"
         "When you identify multiple INDEPENDENT analyses that don't need each "
@@ -168,7 +183,10 @@ def build_default_system_prompt(registry: ToolRegistry, config: DaisyConfig = No
         "- run_command timeout: 30s default, 300s max. For long-running "
         "commands, increase the timeout parameter.\n"
         "- run_python timeout: 60s default, 300s max.\n"
-        "- Output is truncated at 50K characters for both.\n"
+        "- Output is truncated at 50K characters for both. If a tool result "
+        "says 'spilled_to_file', the output was too large for context. Use "
+        "read_file or run_command('head/tail/grep') on the spill file path "
+        "to examine specific parts. Do NOT re-run the original tool.\n"
         "- Scripts from run_python are saved to .daisy/workspace/ for user "
         "inspection. The script_path is returned in the result.\n"
         "- When writing files with write_file, prefer .daisy/workspace/ "
@@ -200,12 +218,18 @@ def build_default_system_prompt(registry: ToolRegistry, config: DaisyConfig = No
             store = TaskStore(config.task_dir)
             active = json.loads(store.list_tasks(status="active"))
             if active["count"] > 0:
+                max_shown = 10
                 lines = ["\n## Active Tasks (%d)" % active["count"]]
-                for t in active["tasks"]:
+                for t in active["tasks"][:max_shown]:
                     lines.append(
                         "- [%s] %s (%s, subtasks: %s, updated: %s)"
                         % (t["id"], t["name"], t["priority"],
                            t["subtasks"], t["updated"])
+                    )
+                if active["count"] > max_shown:
+                    lines.append(
+                        "  ... and %d more (use list_tasks to see all)"
+                        % (active["count"] - max_shown)
                     )
                 lines.append(
                     "\nUse get_task(task_id) for full detail before resuming."
@@ -221,12 +245,18 @@ def build_default_system_prompt(registry: ToolRegistry, config: DaisyConfig = No
             bs = BatchStore(config.batch_dir)
             pending = bs.get_pending_batches()
             if pending:
+                max_shown = 5
                 lines = ["\n## Pending Batches (%d)" % len(pending)]
-                for b in pending:
+                for b in pending[:max_shown]:
                     lines.append(
                         "- [%s] %d requests, task: %s, expires: %s"
                         % (b["id"], b["request_count"],
                            b.get("task_id", "?"), b.get("expires_at", "?"))
+                    )
+                if len(pending) > max_shown:
+                    lines.append(
+                        "  ... and %d more (use check_batch to see all)"
+                        % (len(pending) - max_shown)
                     )
                 lines.append(
                     "\nCall check_batch() to poll status and retrieve results."

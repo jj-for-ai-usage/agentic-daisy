@@ -2,6 +2,7 @@
 import json
 import os
 import re
+import shutil
 
 NAME = "repair_tools"
 DESCRIPTION = (
@@ -65,6 +66,12 @@ def make_handler(config=None, registry=None, **kwargs):
                     entry["issues"].append("SyntaxError: %s" % exc)
                     entry["status"] = "unfixable"
                     if fix and delete_unfixable:
+                        bak_path = path + ".bak"
+                        try:
+                            shutil.copy2(path, bak_path)
+                            entry["backup"] = bak_path
+                        except OSError:
+                            pass
                         os.remove(path)
                         entry["status"] = "deleted"
                     results.append(entry)
@@ -73,6 +80,12 @@ def make_handler(config=None, registry=None, **kwargs):
                     entry["issues"].append("ImportError: %s" % exc)
                     entry["status"] = "unfixable"
                     if fix and delete_unfixable:
+                        bak_path = path + ".bak"
+                        try:
+                            shutil.copy2(path, bak_path)
+                            entry["backup"] = bak_path
+                        except OSError:
+                            pass
                         os.remove(path)
                         entry["status"] = "deleted"
                     results.append(entry)
@@ -146,6 +159,12 @@ def make_handler(config=None, registry=None, **kwargs):
                     and entry["status"] == "unfixable"
                     and os.path.exists(path)
                 ):
+                    bak_path = path + ".bak"
+                    try:
+                        shutil.copy2(path, bak_path)
+                        entry["backup"] = bak_path
+                    except OSError:
+                        pass
                     os.remove(path)
                     entry["status"] = "deleted"
 

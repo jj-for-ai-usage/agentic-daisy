@@ -43,8 +43,11 @@ class AuditLogger:
     def _write(self, event: dict) -> None:
         event["timestamp"] = datetime.now(timezone.utc).isoformat()
         event["session_id"] = self.session_id
-        with open(self.log_file, "a") as f:
-            f.write(json.dumps(event, default=str) + "\n")
+        try:
+            with open(self.log_file, "a") as f:
+                f.write(json.dumps(event, default=str) + "\n")
+        except OSError:
+            pass  # Audit is best-effort; never crash the session
 
     # ------------------------------------------------------------------
     def _log_session_start(self, model: str) -> None:

@@ -196,7 +196,10 @@ def _interactive_loop(
         print("\n%s\n" % result)
         # Auto-save session after each turn
         if session_mgr and session_name:
-            session_mgr.save(session_name, history)
+            try:
+                session_mgr.save(session_name, history)
+            except OSError as exc:
+                LOG.warning("Failed to save session: %s", exc)
 
 
 if __name__ == "__main__":

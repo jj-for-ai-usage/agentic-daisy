@@ -267,10 +267,16 @@ def run_agent_loop(
                     result_str = raw_result if isinstance(raw_result, str) else str(raw_result or "")
                     is_error = False
                 except KeyError:
-                    result_str = "Error: unknown tool '%s'" % tool_name
+                    available = ", ".join(registry.list_names())
+                    result_str = "Error: unknown tool '%s'. Available: %s" % (tool_name, available)
                     is_error = True
                 except Exception as exc:
-                    result_str = "Error executing %s: %s" % (tool_name, exc)
+                    err_msg = str(exc)
+                    if len(err_msg) > 500:
+                        err_msg = err_msg[:500] + "...[truncated]"
+                    result_str = "Error executing %s: %s: %s" % (
+                        tool_name, type(exc).__name__, err_msg,
+                    )
                     is_error = True
 
                 tool_elapsed = time.time() - t_tool
