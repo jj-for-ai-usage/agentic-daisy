@@ -28,6 +28,7 @@ class CustomToolLoader:
     def load_into(self, registry: ToolRegistry) -> int:
         """Import .py files from all dirs, register valid tools. Returns count."""
         count = 0
+        failures = []  # (filename, error_message)
         for d in self.tool_dirs:
             if not os.path.isdir(d):
                 continue
@@ -53,6 +54,15 @@ class CustomToolLoader:
                     count += 1
                 except Exception as exc:
                     LOG.warning("Skipping custom tool %s: %s", fname, exc)
+                    failures.append((fname, str(exc)))
+        if failures:
+            import sys as _sys
+            print(
+                "Warning: %d custom tool(s) failed to load:" % len(failures),
+                file=_sys.stderr,
+            )
+            for fname, err in failures:
+                print("  - %s: %s" % (fname, err), file=_sys.stderr)
         return count
 
     @staticmethod
