@@ -93,6 +93,39 @@ def _spill_to_file(content: str, tool_name: str, config) -> str:
     return path
 
 
+def _validate_tool_pairing(history: List[Dict[str, Any]]) -> Optional[str]:
+    """Return an error string if any assistant(tool_use) lacks matching tool_results.
+
+    The Anthropic API requires every tool_use id in an assistant message to have
+    a corresponding tool_result block in the immediately-following user message.
+    This is a backstop to catch history corruption before we send a guaranteed-400
+    request.
+    """
+    for i, msg in enumerate(history):
+        if msg.get("role") != "assistant":
+            continue
+        content = msg.get("content")
+        if not isinstance(content, list):
+            continue
+        pending = [
+            b.get("id") for b in content
+            if isinstance(b, dict) and b.get("type") == "tool_use"
+        ]
+        if not pending:
+            continue
+        nxt = history[i + 1] if i + 1 < len(history) else None
+        if not nxt or nxt.get("role") != "user" or not isinstance(nxt.get("content"), list):
+            return "orphan tool_use at index %d" % i
+        got = {
+            b.get("tool_use_id") for b in nxt["content"]
+            if isinstance(b, dict) and b.get("type") == "tool_result"
+        }
+        missing = [tid for tid in pending if tid not in got]
+        if missing:
+            return "missing tool_results at index %d: %s" % (i, missing)
+    return None
+
+
 def _make_cache_key(tool_name: str, tool_input: dict) -> str:
     """Deterministic cache key for a tool call."""
     return tool_name + ":" + json.dumps(tool_input, sort_keys=True)
@@ -163,6 +196,14 @@ def run_agent_loop(
             if compacted:
                 print("[Daisy] compacting conversation...", file=sys.stderr, flush=True)
                 LOG.info("Conversation compacted to save tokens.")
+                pairing_err = _validate_tool_pairing(conversation_history)
+                if pairing_err:
+                    LOG.error("Compaction corrupted history: %s", pairing_err)
+                    return (
+                        "[Daisy: internal error -- compaction left conversation in an "
+                        "inconsistent state (%s). Please start a new session.]"
+                        % pairing_err
+                    )
 
         if round_num == 0:
             print("[Daisy] thinking...", file=sys.stderr, flush=True)
@@ -204,6 +245,16 @@ def run_agent_loop(
                     conversation_history, 999_999, audit,
                 )
                 if compacted:
+                    pairing_err = _validate_tool_pairing(conversation_history)
+                    if pairing_err:
+                        LOG.error(
+                            "Emergency compaction corrupted history: %s", pairing_err,
+                        )
+                        return (
+                            "[Daisy: internal error -- emergency compaction left "
+                            "conversation inconsistent (%s). Please start a new session.]"
+                            % pairing_err
+                        )
                     continue  # retry with compacted history
             return "[Daisy: API error %d after retries -- %s]" % (
                 exc.status_code, exc,
@@ -341,26 +392,40 @@ def run_agent_loop(
                     round_num=round_num,
                 )
 
-                # Spill oversized results to file (safety net)
+                # Spill oversized results to file (safety net).
+                # CRITICAL: this must never raise -- if it did, the assistant
+                # tool_use block above would be left in history without a
+                # matching tool_result, causing a guaranteed API 400 next turn.
                 if not is_error and len(result_str) > MAX_TOOL_RESULT:
                     original_len = len(result_str)
-                    spill_path = _spill_to_file(result_str, tool_name, config)
-                    result_str = json.dumps({
-                        "spilled_to_file": spill_path,
-                        "original_size": original_len,
-                        "preview": result_str[:2000],
-                        "message": (
-                            "Output too large for context (%d chars). "
-                            "Full output saved to %s. "
-                            "Use run_command('head/tail/grep ...') or "
-                            "read_file to examine specific parts."
-                            % (original_len, spill_path)
-                        ),
-                    })
-                    LOG.info(
-                        "Tool %s output spilled to %s (%d chars)",
-                        tool_name, spill_path, original_len,
-                    )
+                    try:
+                        spill_path = _spill_to_file(result_str, tool_name, config)
+                        result_str = json.dumps({
+                            "spilled_to_file": spill_path,
+                            "original_size": original_len,
+                            "preview": result_str[:2000],
+                            "message": (
+                                "Output too large for context (%d chars). "
+                                "Full output saved to %s. "
+                                "Use run_command('head/tail/grep ...') or "
+                                "read_file to examine specific parts."
+                                % (original_len, spill_path)
+                            ),
+                        })
+                        LOG.info(
+                            "Tool %s output spilled to %s (%d chars)",
+                            tool_name, spill_path, original_len,
+                        )
+                    except OSError as exc:
+                        LOG.warning(
+                            "Spill-to-file failed for %s: %s -- truncating in memory",
+                            tool_name, exc,
+                        )
+                        result_str = (
+                            result_str[:MAX_TOOL_RESULT]
+                            + "\n[...truncated %d chars; spill failed: %s]"
+                            % (original_len - MAX_TOOL_RESULT, exc)
+                        )
 
                 if is_error:
                     LOG.warning("Tool %s failed: %s", tool_name, result_str)

@@ -57,8 +57,17 @@ class ConversationCompactor:
             # Not enough messages to compact
             return False
 
-        to_summarize = history[:-_KEEP_RECENT]
-        to_keep = history[-_KEEP_RECENT:]
+        cut = _safe_cut_index(history, _KEEP_RECENT)
+        if cut <= 1:
+            # Safe cut would leave nothing to summarize -- skip rather than
+            # produce a history that orphans tool_use/tool_result pairs.
+            LOG.warning(
+                "Compaction skipped: safe cut index %d leaves nothing to summarize",
+                cut,
+            )
+            return False
+        to_summarize = history[:cut]
+        to_keep = history[cut:]
         messages_removed = len(to_summarize)
 
         LOG.info(
@@ -137,6 +146,26 @@ class ConversationCompactor:
             return "[Compaction failed: %s. Previous conversation had %d messages.]" % (
                 exc, len(parts),
             )
+
+
+def _safe_cut_index(history: List[Dict[str, Any]], desired_keep: int) -> int:
+    """Return an index i such that history[i:] preserves tool_use/tool_result pairing.
+
+    If the naive cut would place a user(tool_results) message at history[i]
+    without its matching assistant(tool_use) at history[i-1], walk backwards
+    so the pair stays together.
+    """
+    i = max(0, len(history) - desired_keep)
+    while 0 < i < len(history):
+        msg = history[i]
+        content = msg.get("content")
+        if msg.get("role") == "user" and isinstance(content, list) and any(
+            isinstance(b, dict) and b.get("type") == "tool_result" for b in content
+        ):
+            i -= 1
+            continue
+        break
+    return i
 
 
 def _truncate(text: str, max_len: int) -> str:
