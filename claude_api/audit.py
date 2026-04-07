@@ -2,12 +2,15 @@
 from __future__ import annotations
 
 import json
+import logging
 import os
 import platform
 import sys
 import uuid
 from datetime import datetime, timezone
 from typing import Optional
+
+LOG = logging.getLogger("daisy")
 
 
 class BudgetExceededError(Exception):
@@ -48,8 +51,8 @@ class AuditLogger:
         try:
             with open(self.log_file, "a") as f:
                 f.write(json.dumps(event, default=str) + "\n")
-        except OSError:
-            pass  # Audit is best-effort; never crash the session
+        except OSError as exc:
+            LOG.debug("Audit write failed: %s", exc)  # best-effort; never crash the session
 
     # ------------------------------------------------------------------
     def _log_session_start(self, model: str) -> None:

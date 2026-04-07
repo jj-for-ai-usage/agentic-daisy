@@ -169,10 +169,16 @@ class BatchStore:
         os.makedirs(results_dir, exist_ok=True)
         safe_name = _safe_filename(custom_id)
         path = os.path.join(results_dir, safe_name + ".json")
+        tmp_fd, tmp_path = tempfile.mkstemp(dir=results_dir, suffix=".tmp")
         try:
-            with open(path, "w") as f:
+            with os.fdopen(tmp_fd, "w") as f:
                 json.dump({"custom_id": custom_id, "status": status, "text": text}, f)
+            os.replace(tmp_path, path)
         except OSError as exc:
+            try:
+                os.unlink(tmp_path)
+            except OSError:
+                pass
             return json.dumps({"error": "Failed to write result: %s" % exc})
         return json.dumps({"status": "saved", "path": path})
 
@@ -186,9 +192,14 @@ class BatchStore:
             return json.dumps({"error": "Result '%s' not found" % custom_id})
         try:
             with open(path, "r") as f:
-                return f.read()
+                raw = f.read()
         except OSError as exc:
             return json.dumps({"error": str(exc)})
+        try:
+            json.loads(raw)  # validate -- guard against partial/corrupt files
+        except (ValueError, json.JSONDecodeError) as exc:
+            return json.dumps({"error": "Result file corrupt: %s" % exc})
+        return raw
 
     # -- helpers -----------------------------------------------
 
