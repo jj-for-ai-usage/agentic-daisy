@@ -58,6 +58,9 @@ def parse_args() -> argparse.Namespace:
                     help="List saved sessions and exit")
     ap.add_argument("--budget", type=float, default=1.0,
                     help="Max session cost in USD (default: $1.00, 0 = unlimited)")
+    ap.add_argument("--no-budget-prompt", action="store_true",
+                    help="In non-interactive mode, do NOT prompt on stdin to raise "
+                         "the budget when it's exceeded (default: prompt enabled)")
     ap.add_argument("--compaction-threshold", type=int, default=80_000,
                     help="Input-token threshold to trigger conversation compaction (default: 80000)")
     ap.add_argument("--temperature", type=float, default=0.3,
@@ -166,10 +169,19 @@ def main() -> None:
                 session_mgr=session_mgr, session_name=args.session,
             )
         elif args.message:
-            result = run_agent_loop(
-                config, args.message, registry, audit, conversation_history,
-            )
-            print(result)
+            pending_msg: Optional[str] = args.message
+            while pending_msg is not None:
+                result = run_agent_loop(
+                    config, pending_msg, registry, audit, conversation_history,
+                )
+                if (
+                    _is_budget_exceeded_result(result)
+                    and not args.no_budget_prompt
+                    and _prompt_raise_budget_stdin(config, audit)
+                ):
+                    continue  # retry the same message with the new cap
+                print(result)
+                pending_msg = None
             if session_mgr and args.session:
                 session_mgr.save(args.session, conversation_history)
         else:
@@ -182,6 +194,78 @@ def main() -> None:
         if audit is not None:
             print("\n[%s]" % audit.get_session_summary(), file=sys.stderr)
             audit.log_session_end()
+
+
+def _apply_budget_command(
+    arg: str, config: DaisyConfig, audit: AuditLogger,
+) -> str:
+    """Handle a /budget argument string. Returns a status line for the user.
+
+    Forms:
+      ""           -> show current cost / cap
+      "1.50"       -> set cap to $1.50
+      "+0.50"      -> add $0.50 to current cap
+      "0"          -> unlimited
+    """
+    cost = audit.get_session_cost()
+    current = audit.get_budget()
+    arg = arg.strip()
+    if not arg:
+        cap_str = "$%.2f" % current if current is not None else "unlimited"
+        return "Cost: $%.4f / Budget: %s" % (cost, cap_str)
+    try:
+        if arg.startswith("+"):
+            delta = float(arg[1:])
+            if delta <= 0:
+                return "Error: /budget +<delta> requires a positive number."
+            base = current if current is not None else 0.0
+            new_cap: Optional[float] = base + delta
+        else:
+            val = float(arg)
+            if val < 0:
+                return "Error: budget must be >= 0 (use 0 for unlimited)."
+            new_cap = None if val == 0 else val
+    except ValueError:
+        return "Error: could not parse '%s' as a dollar amount." % arg
+    audit.set_budget(new_cap)
+    config.budget = new_cap
+    cap_str = "$%.2f" % new_cap if new_cap is not None else "unlimited"
+    return "Budget updated -> %s (current cost: $%.4f)" % (cap_str, cost)
+
+
+def _prompt_raise_budget_stdin(
+    config: DaisyConfig, audit: AuditLogger,
+) -> bool:
+    """Non-interactive stdin prompt after a budget-exceeded result.
+
+    Returns True if the user raised the budget and the caller should retry.
+    Returns False on EOF / empty / decline.
+    """
+    if not sys.stdin.isatty():
+        # Best-effort: still try to read one line in case stdin is a pipe with
+        # an answer queued. If EOF, we just give up.
+        pass
+    print(
+        "Budget exceeded. Enter a new cap (e.g. 2.00, +0.50, 0 for unlimited) "
+        "or blank to abort:",
+        file=sys.stderr,
+    )
+    try:
+        line = sys.stdin.readline()
+    except (EOFError, KeyboardInterrupt):
+        return False
+    if not line:
+        return False
+    line = line.strip()
+    if not line:
+        return False
+    msg = _apply_budget_command(line, config, audit)
+    print(msg, file=sys.stderr)
+    return msg.startswith("Budget updated")
+
+
+def _is_budget_exceeded_result(result: str) -> bool:
+    return result.startswith("[Daisy: session budget")
 
 
 def _interactive_loop(
@@ -210,8 +294,19 @@ def _interactive_loop(
             break
         if not user_input:
             continue
+        if user_input.startswith("/budget"):
+            arg = user_input[len("/budget"):].strip()
+            print(_apply_budget_command(arg, config, audit))
+            print()
+            continue
         result = run_agent_loop(config, user_input, registry, audit, history)
         print("\n%s\n" % result)
+        if _is_budget_exceeded_result(result):
+            print(
+                'Tip: type "/budget <amount>" or "/budget +<delta>" to raise '
+                'the cap, then re-send your message.\n',
+                file=sys.stderr,
+            )
         # Auto-save session after each turn
         if session_mgr and session_name:
             try:

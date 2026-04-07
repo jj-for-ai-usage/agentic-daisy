@@ -166,6 +166,24 @@ class AuditLogger:
             )
         return summary
 
+    def set_budget(self, new_cap: Optional[float]) -> None:
+        """Update the session budget cap. Pass None for unlimited.
+
+        Re-arms the 80% warning so it fires once for the new ceiling when
+        the cap is raised (or removed)."""
+        old = self._budget
+        self._budget = new_cap
+        if new_cap is None or (old is not None and new_cap > old):
+            self._warned_budget = False
+        self._write({
+            "event": "budget_changed",
+            "old_usd": old,
+            "new_usd": new_cap,
+        })
+
+    def get_budget(self) -> Optional[float]:
+        return self._budget
+
     def check_budget(self) -> str:
         """Check cost against budget. Returns 'ok', 'warning', or 'exceeded'."""
         if self._budget is None:
