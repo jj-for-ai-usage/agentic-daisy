@@ -37,12 +37,25 @@ _CACHEABLE_TOOLS = frozenset({
 })
 
 
-def _call_api_with_retry(client, call_kwargs: Dict[str, Any]) -> Any:
-    """Call messages.create with exponential backoff on transient errors."""
+def _do_api_call(client, call_kwargs: Dict[str, Any], stream_callback) -> Any:
+    """One API call. If stream_callback is provided, stream text deltas to it
+    and return the final assembled Message; otherwise do a plain create()."""
+    if stream_callback is None:
+        return client.messages.create(**call_kwargs)
+    with client.messages.stream(**call_kwargs) as stream:
+        for text in stream.text_stream:
+            stream_callback(text)
+        return stream.get_final_message()
+
+
+def _call_api_with_retry(
+    client, call_kwargs: Dict[str, Any], stream_callback=None,
+) -> Any:
+    """Call messages.create (or .stream) with exponential backoff on transient errors."""
     last_exc = None
     for attempt in range(MAX_API_RETRIES + 1):
         try:
-            return client.messages.create(**call_kwargs)
+            return _do_api_call(client, call_kwargs, stream_callback)
         except anthropic.RateLimitError as exc:
             last_exc = exc
             if attempt == MAX_API_RETRIES:
@@ -177,6 +190,7 @@ def run_agent_loop(
     audit: AuditLogger,
     conversation_history: Optional[List[Dict[str, Any]]] = None,
     system_prompt: Optional[str] = None,
+    stream_callback: Optional[Any] = None,
 ) -> str:
     """
     Run a full agentic conversation starting from *user_message*.
@@ -253,7 +267,7 @@ def run_agent_loop(
         LOG.debug("Round %d: sending request to %s", round_num, config.model)
         t0 = time.time()
         try:
-            response = _call_api_with_retry(client, call_kwargs)
+            response = _call_api_with_retry(client, call_kwargs, stream_callback)
         except anthropic.AuthenticationError as exc:
             _rollback_pending_user(conversation_history)
             return "[Daisy: authentication failed -- check your API key: %s]" % exc
@@ -288,6 +302,11 @@ def run_agent_loop(
                 exc.status_code, exc,
             )
         elapsed = time.time() - t0
+
+        # Newline after any streamed text so the next stderr status line
+        # ([Daisy] running ..., [Daisy] thinking ...) doesn't collide.
+        if stream_callback is not None:
+            stream_callback("\n")
 
         last_input_tokens = response.usage.input_tokens
 
