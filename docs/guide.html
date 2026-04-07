@@ -1,0 +1,485 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Agentic Daisy — User Guide</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+:root{--bg:#0f1923;--bg2:#162230;--bg3:#1e3044;--accent:#4fc3f7;--accent2:#81d4fa;--text:#e0e6ed;--text2:#8899aa;--green:#66bb6a;--orange:#ffa726;--red:#ef5350;--purple:#b388ff;--radius:10px;--shadow:0 4px 20px rgba(0,0,0,.3)}
+html{scroll-behavior:smooth}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Oxygen,Ubuntu,sans-serif;background:var(--bg);color:var(--text);line-height:1.7;font-size:16px}
+nav{position:sticky;top:0;z-index:100;background:rgba(15,25,35,.95);backdrop-filter:blur(10px);border-bottom:1px solid rgba(79,195,247,.15);padding:12px 0}
+nav .inner{max-width:1100px;margin:0 auto;padding:0 24px;display:flex;align-items:center;gap:24px;overflow-x:auto}
+nav a{color:var(--text2);text-decoration:none;font-size:13px;white-space:nowrap;transition:color .2s}
+nav a:hover{color:var(--accent)}
+nav .logo{color:var(--accent);font-weight:700;font-size:16px;margin-right:8px}
+.container{max-width:1100px;margin:0 auto;padding:0 24px}
+section{padding:64px 0}
+section+section{border-top:1px solid rgba(79,195,247,.08)}
+h1{font-size:clamp(2rem,5vw,3.2rem);font-weight:800;background:linear-gradient(135deg,var(--accent),var(--accent2));-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text}
+h2{font-size:1.6rem;font-weight:700;color:var(--accent);margin-bottom:24px}
+h3{font-size:1.15rem;font-weight:600;color:var(--text);margin:20px 0 10px}
+p{margin:10px 0;color:var(--text2)}
+code{font-family:'SF Mono',Monaco,Consolas,'Liberation Mono',monospace;background:var(--bg3);padding:2px 7px;border-radius:4px;font-size:.9em;color:var(--accent2)}
+pre{background:var(--bg2);border:1px solid rgba(79,195,247,.1);border-radius:var(--radius);padding:20px;overflow-x:auto;margin:16px 0;line-height:1.5}
+pre code{background:none;padding:0;color:var(--text)}
+.hero{text-align:center;padding:80px 0 60px}
+.hero .tagline{font-size:1.2rem;color:var(--text2);margin-top:12px}
+.steps{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:20px;margin:24px 0}
+.step{background:var(--bg2);border:1px solid rgba(79,195,247,.1);border-radius:var(--radius);padding:24px;position:relative}
+.step-num{position:absolute;top:-12px;left:20px;background:var(--accent);color:var(--bg);font-weight:800;width:28px;height:28px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:14px}
+.step h3{margin-top:8px}
+.cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:16px;margin:24px 0}
+.card{background:var(--bg2);border:1px solid rgba(79,195,247,.1);border-radius:var(--radius);padding:20px;transition:border-color .2s}
+.card:hover{border-color:var(--accent)}
+.card .name{font-weight:700;color:var(--accent);font-size:1.05rem}
+.card .badge{display:inline-block;font-size:11px;padding:2px 8px;border-radius:10px;font-weight:600;margin-left:8px}
+.badge-mem{background:rgba(102,187,106,.15);color:var(--green)}
+.badge-file{background:rgba(79,195,247,.15);color:var(--accent)}
+.badge-exec{background:rgba(255,167,38,.15);color:var(--orange)}
+.card .desc{color:var(--text2);font-size:.9rem;margin:8px 0}
+.card .params{font-size:.85rem;color:var(--text2)}
+.card .params span{color:var(--accent2)}
+table{width:100%;border-collapse:collapse;margin:16px 0}
+th,td{text-align:left;padding:10px 14px;border-bottom:1px solid rgba(79,195,247,.08)}
+th{color:var(--accent);font-size:.85rem;text-transform:uppercase;letter-spacing:.5px}
+td code{font-size:.85em}
+.priority-box{display:flex;gap:12px;margin:20px 0;flex-wrap:wrap}
+.priority{flex:1;min-width:200px;background:var(--bg2);border-radius:var(--radius);padding:16px;border-left:3px solid var(--accent)}
+.priority.p1{border-color:var(--green)}
+.priority.p2{border-color:var(--orange)}
+.priority.p3{border-color:var(--accent)}
+.priority .label{font-size:.8rem;font-weight:700;text-transform:uppercase;letter-spacing:1px;margin-bottom:6px}
+.priority.p1 .label{color:var(--green)}
+.priority.p2 .label{color:var(--orange)}
+.priority.p3 .label{color:var(--accent)}
+.tree-box{background:var(--bg2);border:1px solid rgba(79,195,247,.1);border-radius:var(--radius);padding:24px;font-family:'SF Mono',Monaco,Consolas,monospace;font-size:.9rem;line-height:1.8}
+.tree-box .dir{color:var(--accent)}
+.tree-box .file{color:var(--text2)}
+.tree-box .note{color:var(--text2);font-style:italic;font-family:-apple-system,sans-serif;font-size:.85rem}
+.svg-container{background:var(--bg2);border:1px solid rgba(79,195,247,.1);border-radius:var(--radius);padding:24px;margin:24px 0;overflow-x:auto}
+.check-list{list-style:none;padding:0}
+.check-list li{padding:8px 0;padding-left:28px;position:relative;color:var(--text2)}
+.check-list li::before{content:"✓";position:absolute;left:0;color:var(--green);font-weight:700}
+footer{text-align:center;padding:40px 0;color:var(--text2);font-size:.9rem;border-top:1px solid rgba(79,195,247,.08)}
+</style>
+</head>
+<body>
+
+<!-- NAV -->
+<nav><div class="inner">
+<span class="logo">Daisy</span>
+<a href="#quickstart">Quick Start</a>
+<a href="#architecture">Architecture</a>
+<a href="#loop">Agent Loop</a>
+<a href="#tools">Tools</a>
+<a href="#cli">CLI Reference</a>
+<a href="#apikey">API Key</a>
+<a href="#data">Data &amp; Storage</a>
+<a href="#testing">Testing</a>
+<a href="#security">Security</a>
+</div></nav>
+
+<!-- HERO -->
+<section class="hero" id="top"><div class="container">
+<h1>Agentic Daisy</h1>
+<p class="tagline">Air-gapped Claude AI toolkit for EDA application engineers</p>
+<p style="margin-top:8px;font-size:.95rem">12 tools &middot; persistent memory &middot; session replay &middot; audit logging &middot; no internet required after setup</p>
+</div></section>
+
+<!-- PLACEHOLDER SECTIONS - will be filled -->
+<section id="quickstart"><div class="container">
+<h2>Quick Start</h2>
+<p>Get up and running in three steps. No internet needed after the initial wheel unpack.</p>
+<div class="steps">
+<div class="step"><div class="step-num">1</div>
+<h3>Unpack Dependencies</h3>
+<p>One-time setup — extracts pre-vendored Python wheels.</p>
+<pre><code>bash vendor/install.sh</code></pre>
+</div>
+<div class="step"><div class="step-num">2</div>
+<h3>Store Your API Key</h3>
+<p>Saved securely with owner-only permissions.</p>
+<pre><code>mkdir -p ~/.daisy
+echo 'sk-ant-...' &gt; ~/.daisy/api_key
+chmod 600 ~/.daisy/api_key</code></pre>
+</div>
+<div class="step"><div class="step-num">3</div>
+<h3>Run Daisy</h3>
+<p>Single-shot or interactive — your choice.</p>
+<pre><code># Single question
+bin/daisy "Show disk usage on /data"
+
+# Interactive session
+bin/daisy --interactive
+
+# Named session (auto-saved, resumable)
+bin/daisy --interactive --session my-project</code></pre>
+</div>
+</div>
+</div></section>
+<section id="architecture"><div class="container">
+<h2>System Architecture</h2>
+<p>How the pieces fit together — from your terminal to Claude and back.</p>
+<div class="svg-container">
+<svg viewBox="0 0 800 520" xmlns="http://www.w3.org/2000/svg" font-family="-apple-system,BlinkMacSystemFont,sans-serif" font-size="13">
+<!-- Background grid dots -->
+<defs>
+<marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#4fc3f7"/></marker>
+<marker id="arrow-g" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#66bb6a"/></marker>
+</defs>
+<!-- User -->
+<rect x="320" y="10" width="160" height="44" rx="22" fill="none" stroke="#4fc3f7" stroke-width="2"/>
+<text x="400" y="37" fill="#4fc3f7" text-anchor="middle" font-weight="700">User Terminal</text>
+<!-- Arrow -->
+<line x1="400" y1="54" x2="400" y2="80" stroke="#4fc3f7" stroke-width="1.5" marker-end="url(#arrow)"/>
+<!-- bin/daisy -->
+<rect x="310" y="82" width="180" height="40" rx="8" fill="#162230" stroke="#4fc3f7" stroke-width="1.5"/>
+<text x="400" y="107" fill="#e0e6ed" text-anchor="middle" font-weight="600">bin/daisy</text>
+<text x="400" y="107" fill="#8899aa" text-anchor="middle" font-size="10" dy="14">sets PYTHONPATH + launches CLI</text>
+<!-- Arrow -->
+<line x1="400" y1="122" x2="400" y2="148" stroke="#4fc3f7" stroke-width="1.5" marker-end="url(#arrow)"/>
+<!-- CLI -->
+<rect x="280" y="150" width="240" height="44" rx="8" fill="#1e3044" stroke="#4fc3f7" stroke-width="1.5"/>
+<text x="400" y="177" fill="#e0e6ed" text-anchor="middle" font-weight="600">cli.py</text>
+<text x="400" y="177" fill="#8899aa" text-anchor="middle" font-size="10" dy="13">parse args &bull; load config &bull; register tools</text>
+<!-- Three branches from CLI -->
+<!-- Left: Config -->
+<line x1="310" y1="194" x2="140" y2="230" stroke="#8899aa" stroke-width="1" stroke-dasharray="4"/>
+<rect x="40" y="220" width="200" height="56" rx="8" fill="#162230" stroke="#8899aa" stroke-width="1"/>
+<text x="140" y="243" fill="#e0e6ed" text-anchor="middle" font-weight="600" font-size="12">Config</text>
+<text x="140" y="260" fill="#8899aa" text-anchor="middle" font-size="10">API key &bull; model &bull; directories</text>
+<!-- Right: Audit -->
+<line x1="490" y1="194" x2="660" y2="230" stroke="#8899aa" stroke-width="1" stroke-dasharray="4"/>
+<rect x="560" y="220" width="200" height="56" rx="8" fill="#162230" stroke="#ffa726" stroke-width="1"/>
+<text x="660" y="243" fill="#e0e6ed" text-anchor="middle" font-weight="600" font-size="12">Audit Logger</text>
+<text x="660" y="260" fill="#8899aa" text-anchor="middle" font-size="10">JSONL &bull; tokens &bull; cost &bull; commands</text>
+<!-- Arrow down to Agent Loop -->
+<line x1="400" y1="194" x2="400" y2="230" stroke="#4fc3f7" stroke-width="2" marker-end="url(#arrow)"/>
+<!-- AGENT LOOP - main box -->
+<rect x="260" y="232" width="280" height="60" rx="10" fill="#162230" stroke="#4fc3f7" stroke-width="2"/>
+<text x="400" y="258" fill="#4fc3f7" text-anchor="middle" font-weight="700" font-size="15">Agent Loop</text>
+<text x="400" y="276" fill="#8899aa" text-anchor="middle" font-size="11">agent_loop.py &bull; max 20 rounds</text>
+<!-- Bidirectional arrow to Claude API -->
+<line x1="400" y1="292" x2="400" y2="340" stroke="#4fc3f7" stroke-width="2" marker-end="url(#arrow)"/>
+<line x1="408" y1="340" x2="408" y2="292" stroke="#81d4fa" stroke-width="1.5" marker-end="url(#arrow)" stroke-dasharray="4"/>
+<text x="425" y="320" fill="#8899aa" font-size="10">via proxy</text>
+<!-- Claude API -->
+<rect x="300" y="342" width="200" height="44" rx="8" fill="#162230" stroke="#b388ff" stroke-width="1.5"/>
+<text x="400" y="369" fill="#b388ff" text-anchor="middle" font-weight="700">Claude API</text>
+<!-- Tool Registry branch -->
+<line x1="330" y1="262" x2="120" y2="330" stroke="#66bb6a" stroke-width="1.5" marker-end="url(#arrow-g)"/>
+<rect x="20" y="320" width="200" height="40" rx="8" fill="#162230" stroke="#66bb6a" stroke-width="1.5"/>
+<text x="120" y="345" fill="#66bb6a" text-anchor="middle" font-weight="600">Tool Registry</text>
+<!-- Tool fan-out -->
+<line x1="120" y1="360" x2="60" y2="390" stroke="#66bb6a" stroke-width="1" stroke-dasharray="3"/>
+<line x1="120" y1="360" x2="120" y2="390" stroke="#66bb6a" stroke-width="1" stroke-dasharray="3"/>
+<line x1="120" y1="360" x2="180" y2="390" stroke="#66bb6a" stroke-width="1" stroke-dasharray="3"/>
+<!-- Memory tools -->
+<rect x="10" y="392" width="100" height="32" rx="6" fill="#162230" stroke="#66bb6a" stroke-width="1"/>
+<text x="60" y="413" fill="#66bb6a" text-anchor="middle" font-size="11" font-weight="600">Memory</text>
+<!-- File tools -->
+<rect x="70" y="432" width="100" height="32" rx="6" fill="#162230" stroke="#4fc3f7" stroke-width="1"/>
+<text x="120" y="453" fill="#4fc3f7" text-anchor="middle" font-size="11" font-weight="600">Files &amp; Search</text>
+<!-- Exec tools -->
+<rect x="130" y="392" width="100" height="32" rx="6" fill="#162230" stroke="#ffa726" stroke-width="1"/>
+<text x="180" y="413" fill="#ffa726" text-anchor="middle" font-size="11" font-weight="600">Shell / Python</text>
+<!-- Session Manager -->
+<line x1="470" y1="262" x2="620" y2="330" stroke="#81d4fa" stroke-width="1" stroke-dasharray="4"/>
+<rect x="560" y="320" width="200" height="56" rx="8" fill="#162230" stroke="#81d4fa" stroke-width="1"/>
+<text x="660" y="343" fill="#e0e6ed" text-anchor="middle" font-weight="600" font-size="12">Session Manager</text>
+<text x="660" y="360" fill="#8899aa" text-anchor="middle" font-size="10">save / load / list sessions</text>
+<!-- Disk storage -->
+<rect x="540" y="420" width="240" height="88" rx="8" fill="#162230" stroke="#8899aa" stroke-width="1"/>
+<text x="660" y="442" fill="#e0e6ed" text-anchor="middle" font-weight="600" font-size="12">~/.daisy/</text>
+<text x="660" y="462" fill="#8899aa" text-anchor="middle" font-size="11">api_key <tspan fill="#66bb6a">(chmod 600)</tspan></text>
+<text x="660" y="478" fill="#8899aa" text-anchor="middle" font-size="11">memory/ &bull; sessions/ &bull; logs/</text>
+<text x="660" y="494" fill="#8899aa" text-anchor="middle" font-size="10">all directories mode 0700</text>
+<line x1="660" y1="376" x2="660" y2="418" stroke="#8899aa" stroke-width="1" stroke-dasharray="3"/>
+</svg>
+</div>
+</div></section>
+<section id="loop"><div class="container">
+<h2>How the Agent Loop Works</h2>
+<p>Daisy uses a tool-use loop: Claude can request tool calls, Daisy executes them locally, and feeds results back until Claude has a final answer.</p>
+<div class="svg-container">
+<svg viewBox="0 0 700 380" xmlns="http://www.w3.org/2000/svg" font-family="-apple-system,BlinkMacSystemFont,sans-serif" font-size="13">
+<defs>
+<marker id="a2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#4fc3f7"/></marker>
+</defs>
+<!-- Step 1: User message -->
+<rect x="30" y="30" width="200" height="50" rx="25" fill="none" stroke="#4fc3f7" stroke-width="2"/>
+<text x="130" y="60" fill="#4fc3f7" text-anchor="middle" font-weight="700">1. User Message</text>
+<!-- Arrow right -->
+<line x1="230" y1="55" x2="280" y2="55" stroke="#4fc3f7" stroke-width="1.5" marker-end="url(#a2)"/>
+<!-- Step 2: Send to Claude -->
+<rect x="282" y="25" width="200" height="60" rx="8" fill="#1e3044" stroke="#b388ff" stroke-width="1.5"/>
+<text x="382" y="50" fill="#b388ff" text-anchor="middle" font-weight="700">2. Claude API</text>
+<text x="382" y="68" fill="#8899aa" text-anchor="middle" font-size="11">messages + tools + history</text>
+<!-- Arrow down -->
+<line x1="382" y1="85" x2="382" y2="120" stroke="#4fc3f7" stroke-width="1.5" marker-end="url(#a2)"/>
+<!-- Decision diamond -->
+<polygon points="382,122 462,162 382,202 302,162" fill="none" stroke="#4fc3f7" stroke-width="1.5"/>
+<text x="382" y="158" fill="#e0e6ed" text-anchor="middle" font-size="12" font-weight="600">stop_reason?</text>
+<text x="382" y="173" fill="#8899aa" text-anchor="middle" font-size="10">tool_use vs end_turn</text>
+<!-- Right path: end_turn -->
+<line x1="462" y1="162" x2="560" y2="162" stroke="#66bb6a" stroke-width="1.5" marker-end="url(#a2)"/>
+<text x="510" y="153" fill="#66bb6a" font-size="11" text-anchor="middle">end_turn</text>
+<rect x="562" y="137" width="120" height="50" rx="25" fill="none" stroke="#66bb6a" stroke-width="2"/>
+<text x="622" y="162" fill="#66bb6a" text-anchor="middle" font-size="12" font-weight="700">3a. Done!</text>
+<text x="622" y="177" fill="#8899aa" text-anchor="middle" font-size="10">print response</text>
+<!-- Down path: tool_use -->
+<line x1="382" y1="202" x2="382" y2="240" stroke="#ffa726" stroke-width="1.5" marker-end="url(#a2)"/>
+<text x="395" y="225" fill="#ffa726" font-size="11">tool_use</text>
+<!-- Execute tools box -->
+<rect x="272" y="242" width="220" height="55" rx="8" fill="#162230" stroke="#ffa726" stroke-width="1.5"/>
+<text x="382" y="265" fill="#ffa726" text-anchor="middle" font-weight="700">3b. Execute Tools</text>
+<text x="382" y="282" fill="#8899aa" text-anchor="middle" font-size="11">run locally &bull; audit logged</text>
+<!-- Loop back arrow -->
+<line x1="272" y1="270" x2="160" y2="270" stroke="#ffa726" stroke-width="1.5"/>
+<line x1="160" y1="270" x2="160" y2="55" stroke="#ffa726" stroke-width="1.5"/>
+<line x1="160" y1="55" x2="280" y2="55" stroke="#ffa726" stroke-width="1.5" marker-end="url(#a2)"/>
+<text x="100" y="170" fill="#ffa726" font-size="11" text-anchor="middle" transform="rotate(-90,100,170)">send results back</text>
+<!-- Safety note -->
+<rect x="272" y="320" width="220" height="40" rx="6" fill="#162230" stroke="#ef5350" stroke-width="1" stroke-dasharray="4"/>
+<text x="382" y="345" fill="#ef5350" text-anchor="middle" font-size="11">Safety cap: max 20 rounds</text>
+</svg>
+</div>
+<h3>What happens at each step</h3>
+<table>
+<tr><th>Step</th><th>What happens</th><th>Where</th></tr>
+<tr><td>1</td><td>User types a message (single-shot or interactive)</td><td><code>cli.py</code></td></tr>
+<tr><td>2</td><td>Message + conversation history + tool definitions sent to Claude API (with retry on failure)</td><td><code>agent_loop.py</code></td></tr>
+<tr><td>3a</td><td>Claude returns text — printed to user, session saved</td><td><code>agent_loop.py</code></td></tr>
+<tr><td>3b</td><td>Claude requests tool calls — each tool executed locally, results sent back, loop repeats</td><td><code>tool_registry.py</code></td></tr>
+</table>
+</div></section>
+<section id="tools"><div class="container">
+<h2>Tools Reference</h2>
+<p>Daisy gives Claude 12 tools it can call during a conversation. Tools are executed locally on your server — results are fed back to Claude automatically.</p>
+<h3>Memory Tools</h3>
+<div class="cards">
+<div class="card"><span class="name">save_memory</span><span class="badge badge-mem">Memory</span>
+<p class="desc">Save information for later retrieval across conversations.</p>
+<p class="params"><span>key</span> (required) &middot; <span>value</span> (required) &middot; <span>tags</span> (optional array)</p></div>
+<div class="card"><span class="name">search_memory</span><span class="badge badge-mem">Memory</span>
+<p class="desc">Search saved memories by keyword (substring match) or exact tag.</p>
+<p class="params"><span>query</span> (optional) &middot; <span>tag</span> (optional)</p></div>
+<div class="card"><span class="name">delete_memory</span><span class="badge badge-mem">Memory</span>
+<p class="desc">Delete a saved memory by its key.</p>
+<p class="params"><span>key</span> (required)</p></div>
+<div class="card"><span class="name">list_memories</span><span class="badge badge-mem">Memory</span>
+<p class="desc">List all memory keys with tags and last-updated timestamps.</p>
+<p class="params">No parameters</p></div>
+</div>
+<h3>File &amp; Search Tools</h3>
+<div class="cards">
+<div class="card"><span class="name">read_file</span><span class="badge badge-file">File</span>
+<p class="desc">Read file contents. Returns up to 100K characters with truncation flag.</p>
+<p class="params"><span>path</span> (required)</p></div>
+<div class="card"><span class="name">write_file</span><span class="badge badge-file">File</span>
+<p class="desc">Write content to a file. Creates parent directories if needed.</p>
+<p class="params"><span>path</span> (required) &middot; <span>content</span> (required)</p></div>
+<div class="card"><span class="name">list_directory</span><span class="badge badge-file">File</span>
+<p class="desc">List directory contents with file types and sizes.</p>
+<p class="params"><span>path</span> (optional, default: cwd)</p></div>
+<div class="card"><span class="name">search_files</span><span class="badge badge-file">File</span>
+<p class="desc">Regex content search — returns matching lines with file paths and line numbers. Recursive.</p>
+<p class="params"><span>pattern</span> (required) &middot; <span>path</span> &middot; <span>include</span> (glob filter) &middot; <span>context_lines</span></p></div>
+<div class="card"><span class="name">find_files</span><span class="badge badge-file">File</span>
+<p class="desc">Find files by glob pattern (e.g. <code>*.sdc</code>, <code>*.log</code>). Recursive.</p>
+<p class="params"><span>pattern</span> (required) &middot; <span>path</span> (optional)</p></div>
+<div class="card"><span class="name">directory_tree</span><span class="badge badge-file">File</span>
+<p class="desc">Recursive directory tree with configurable depth limit. Good for project overview.</p>
+<p class="params"><span>path</span> (optional) &middot; <span>max_depth</span> (1-5, default: 3)</p></div>
+</div>
+<h3>Execution Tools</h3>
+<div class="cards">
+<div class="card"><span class="name">run_command</span><span class="badge badge-exec">Exec</span>
+<p class="desc">Execute a shell command. Returns stdout, stderr, and exit code. Interactive mode asks for confirmation.</p>
+<p class="params"><span>command</span> (required) &middot; <span>timeout</span> (default: 30s, max: 300s)</p></div>
+<div class="card"><span class="name">run_python</span><span class="badge badge-exec">Exec</span>
+<p class="desc">Execute a Python script. Ideal for multi-line log parsing, data analysis, and report generation.</p>
+<p class="params"><span>code</span> (required) &middot; <span>timeout</span> (default: 60s, max: 300s)</p></div>
+</div>
+<p style="margin-top:16px;font-size:.9rem">Execution tools are disabled with <code>--no-shell</code>. Output is truncated at 50K characters. API keys are scrubbed from subprocess environment.</p>
+</div></section>
+<section id="cli"><div class="container">
+<h2>CLI Reference</h2>
+<p>All flags for <code>bin/daisy</code>:</p>
+<table>
+<tr><th>Flag</th><th>Type</th><th>Default</th><th>Description</th></tr>
+<tr><td><code>message</code></td><td>positional</td><td>-</td><td>Message to send (single-shot mode)</td></tr>
+<tr><td><code>--api-key</code></td><td>string</td><td>env / file</td><td>Anthropic API key</td></tr>
+<tr><td><code>--model</code></td><td>string</td><td><code>claude-haiku-4-5</code></td><td>Model to use</td></tr>
+<tr><td><code>--max-tokens</code></td><td>int</td><td><code>4096</code></td><td>Max response tokens</td></tr>
+<tr><td><code>--system</code></td><td>string</td><td>auto-generated</td><td>Override system prompt</td></tr>
+<tr><td><code>--memory-dir</code></td><td>path</td><td><code>~/.daisy/memory</code></td><td>Memory storage directory</td></tr>
+<tr><td><code>--log-dir</code></td><td>path</td><td><code>~/.daisy/logs</code></td><td>Audit log directory</td></tr>
+<tr><td><code>--interactive</code></td><td>flag</td><td>off</td><td>Interactive REPL mode</td></tr>
+<tr><td><code>--no-tools</code></td><td>flag</td><td>off</td><td>Disable all tools (plain chat)</td></tr>
+<tr><td><code>--no-shell</code></td><td>flag</td><td>off</td><td>Disable shell/python execution tools</td></tr>
+<tr><td><code>--session NAME</code></td><td>string</td><td>-</td><td>Save/resume named session</td></tr>
+<tr><td><code>--list-sessions</code></td><td>flag</td><td>off</td><td>List saved sessions and exit</td></tr>
+<tr><td><code>--debug</code></td><td>flag</td><td>off</td><td>Enable DEBUG logging</td></tr>
+</table>
+<h3>Examples</h3>
+<pre><code># Single question
+bin/daisy "Find all timing violations in genus.log"
+
+# Interactive with session persistence
+bin/daisy --interactive --session alpha-debug
+
+# Resume a previous session
+bin/daisy --interactive --session alpha-debug
+
+# Use a specific model
+bin/daisy --model claude-sonnet-4-5 "Analyze this congestion report"
+
+# Plain chat, no tools
+bin/daisy --no-tools "Explain clock tree synthesis"
+
+# List your saved sessions
+bin/daisy --list-sessions</code></pre>
+</div></section>
+<section id="apikey"><div class="container">
+<h2>API Key Setup</h2>
+<p>Daisy checks three sources for your API key, in priority order:</p>
+<div class="priority-box">
+<div class="priority p1">
+<div class="label">Priority 1 — CLI Flag</div>
+<pre><code>bin/daisy --api-key 'sk-ant-...' "Hello"</code></pre>
+<p>Overrides everything. Good for one-off testing.</p>
+</div>
+<div class="priority p2">
+<div class="label">Priority 2 — Environment Variable</div>
+<pre><code># bash
+export ANTHROPIC_API_KEY='sk-ant-...'
+
+# csh/tcsh
+setenv ANTHROPIC_API_KEY 'sk-ant-...'</code></pre>
+<p>Good for shell sessions. Disappears on logout.</p>
+</div>
+<div class="priority p3">
+<div class="label">Priority 3 — Key File (Recommended)</div>
+<pre><code>mkdir -p ~/.daisy
+echo 'sk-ant-...' &gt; ~/.daisy/api_key
+chmod 600 ~/.daisy/api_key</code></pre>
+<p>Persistent, secure, works across all shells. Daisy warns if permissions are too open.</p>
+</div>
+</div>
+</div></section>
+<section id="data"><div class="container">
+<h2>Data &amp; Storage</h2>
+<p>All Daisy data lives under <code>~/.daisy/</code> with strict permissions.</p>
+<div class="tree-box">
+<span class="dir">~/.daisy/</span> <span class="note">&nbsp;&nbsp;(all directories mode 0700 — owner only)</span><br>
+&nbsp;&nbsp;&boxvr;&nbsp;<span class="file">api_key</span> <span class="note">&nbsp;&nbsp;chmod 600 &middot; your Anthropic API key</span><br>
+&nbsp;&nbsp;&boxvr;&nbsp;<span class="dir">memory/</span><br>
+&nbsp;&nbsp;&boxv;&nbsp;&nbsp;&nbsp;&boxur;&nbsp;<span class="file">memories.json</span> <span class="note">&nbsp;&nbsp;persistent key-value store &middot; atomic writes</span><br>
+&nbsp;&nbsp;&boxvr;&nbsp;<span class="dir">sessions/</span><br>
+&nbsp;&nbsp;&boxv;&nbsp;&nbsp;&nbsp;&boxur;&nbsp;<span class="file">&lt;name&gt;.json</span> <span class="note">&nbsp;&nbsp;conversation history &middot; auto-saved each turn</span><br>
+&nbsp;&nbsp;&boxur;&nbsp;<span class="dir">logs/</span><br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&boxur;&nbsp;<span class="file">daisy-&lt;id&gt;-&lt;date&gt;.jsonl</span> <span class="note">&nbsp;&nbsp;audit events &middot; one file per session</span>
+</div>
+<h3>Audit Log Events</h3>
+<table>
+<tr><th>Event</th><th>Fields logged</th><th>NOT logged (security)</th></tr>
+<tr><td><code>session_start</code></td><td>model, python version, SDK version</td><td>-</td></tr>
+<tr><td><code>api_call</code></td><td>model, input/output tokens, stop reason, latency</td><td>message content</td></tr>
+<tr><td><code>tool_execution</code></td><td>tool name, success/fail, latency</td><td>tool input/output</td></tr>
+<tr><td><code>shell_command</code></td><td>command string, exit code, timeout status</td><td>command output</td></tr>
+<tr><td><code>session_end</code></td><td>total tokens, estimated cost (USD)</td><td>-</td></tr>
+</table>
+<p>At the end of every session, a cost summary is printed to stderr:<br>
+<code>[Tokens: 5200 in / 1800 out | Est. cost: $0.0112]</code></p>
+</div></section>
+<section id="testing"><div class="container">
+<h2>Testing</h2>
+<p>Run the built-in test suite to verify everything works.</p>
+<div class="steps">
+<div class="step"><div class="step-num" style="background:var(--green)">Q</div>
+<h3>Quick Smoke Test</h3>
+<p>13 tests in under 1 second. No API key needed.</p>
+<pre><code>bash bin/daisy-test-suite --quick</code></pre>
+</div>
+<div class="step"><div class="step-num" style="background:var(--orange)">F</div>
+<h3>Full Offline Suite</h3>
+<p>33 tests covering every component. ~5 seconds. No API key needed.</p>
+<pre><code>bash bin/daisy-test-suite</code></pre>
+</div>
+<div class="step"><div class="step-num" style="background:var(--purple)">O</div>
+<h3>Online (API) Tests</h3>
+<p>33 offline + 2 live API tests (basic call + tool-use loop).</p>
+<pre><code>bash bin/daisy-test-suite --api-key 'sk-ant-...'</code></pre>
+</div>
+</div>
+<h3>What's tested</h3>
+<table>
+<tr><th>Area</th><th>Tests</th><th>Covers</th></tr>
+<tr><td>Imports</td><td>1</td><td>All modules + vendored SDK</td></tr>
+<tr><td>Config</td><td>1</td><td>Defaults, key file loading</td></tr>
+<tr><td>Tool Registry</td><td>3</td><td>Register, execute, kwargs filtering, unknown tool</td></tr>
+<tr><td>Memory</td><td>4</td><td>CRUD, corruption recovery, atomic writes, permissions</td></tr>
+<tr><td>Audit</td><td>2</td><td>Event lifecycle, cost calculation, permissions</td></tr>
+<tr><td>File Tools</td><td>7</td><td>Read/write/list, regex search, glob find, tree</td></tr>
+<tr><td>Shell/Python</td><td>5</td><td>Execute, timeout, errors, API key scrubbing</td></tr>
+<tr><td>Sessions</td><td>4</td><td>Save/load, corruption, permissions, path traversal</td></tr>
+<tr><td>Integration</td><td>6</td><td>Tool count, system prompt, CLI flags</td></tr>
+<tr><td>Online</td><td>2</td><td>Basic API call, tool-use round-trip</td></tr>
+</table>
+</div></section>
+<section id="security"><div class="container">
+<h2>Security Features</h2>
+<p>Designed for enterprise deployment on shared multi-user servers.</p>
+<ul class="check-list">
+<li>API key file at <code>~/.daisy/api_key</code> with <code>chmod 600</code> — warns if permissions are too open</li>
+<li><code>ANTHROPIC_API_KEY</code> is stripped from subprocess environment — <code>run_command</code> and <code>run_python</code> cannot leak your key</li>
+<li>All <code>~/.daisy/</code> directories created with mode <code>0700</code> — only owner can read memory, sessions, and logs</li>
+<li>Audit logging records every API call, tool execution, and shell command (metadata only, no content)</li>
+<li>Interactive mode shows confirmation prompt before executing shell commands and Python scripts</li>
+<li>API calls use exponential backoff retry (4 retries: 2s, 4s, 8s, 16s) — auth errors fail immediately</li>
+<li>Context window warning at 150K input tokens — prevents silent degradation</li>
+<li>Session names are sanitized to prevent path traversal</li>
+<li>Memory and session files use atomic writes (tempfile + rename) — no corruption on crash</li>
+<li>Corrupted JSON files recover gracefully — app never becomes unlaunchable</li>
+<li>All traffic goes through the corporate HTTP proxy (httpx honors <code>HTTPS_PROXY</code>)</li>
+</ul>
+</div></section>
+<section id="structure"><div class="container">
+<h2>Project Structure</h2>
+<div class="tree-box">
+<span class="dir">agentic-daisy/</span><br>
+&nbsp;&nbsp;&boxvr;&nbsp;<span class="dir">bin/</span><br>
+&nbsp;&nbsp;&boxv;&nbsp;&nbsp;&nbsp;&boxvr;&nbsp;<span class="file">daisy</span> <span class="note">&nbsp;&nbsp;main launcher (bash)</span><br>
+&nbsp;&nbsp;&boxv;&nbsp;&nbsp;&nbsp;&boxvr;&nbsp;<span class="file">daisy-test</span> <span class="note">&nbsp;&nbsp;API connectivity test</span><br>
+&nbsp;&nbsp;&boxv;&nbsp;&nbsp;&nbsp;&boxur;&nbsp;<span class="file">daisy-test-suite</span> <span class="note">&nbsp;&nbsp;full test harness (33+2 tests)</span><br>
+&nbsp;&nbsp;&boxvr;&nbsp;<span class="dir">claude_api/</span><br>
+&nbsp;&nbsp;&boxv;&nbsp;&nbsp;&nbsp;&boxvr;&nbsp;<span class="file">cli.py</span> <span class="note">&nbsp;&nbsp;CLI argument parsing &amp; modes</span><br>
+&nbsp;&nbsp;&boxv;&nbsp;&nbsp;&nbsp;&boxvr;&nbsp;<span class="file">config.py</span> <span class="note">&nbsp;&nbsp;configuration + key file loader</span><br>
+&nbsp;&nbsp;&boxv;&nbsp;&nbsp;&nbsp;&boxvr;&nbsp;<span class="file">agent_loop.py</span> <span class="note">&nbsp;&nbsp;core tool-use loop with retry</span><br>
+&nbsp;&nbsp;&boxv;&nbsp;&nbsp;&nbsp;&boxvr;&nbsp;<span class="file">tool_registry.py</span> <span class="note">&nbsp;&nbsp;tool registration &amp; execution</span><br>
+&nbsp;&nbsp;&boxv;&nbsp;&nbsp;&nbsp;&boxvr;&nbsp;<span class="file">built_in_tools.py</span> <span class="note">&nbsp;&nbsp;system prompt + tool loader</span><br>
+&nbsp;&nbsp;&boxv;&nbsp;&nbsp;&nbsp;&boxvr;&nbsp;<span class="file">memory.py</span> <span class="note">&nbsp;&nbsp;JSON-backed persistent memory</span><br>
+&nbsp;&nbsp;&boxv;&nbsp;&nbsp;&nbsp;&boxvr;&nbsp;<span class="file">audit.py</span> <span class="note">&nbsp;&nbsp;JSONL audit logger + cost tracking</span><br>
+&nbsp;&nbsp;&boxv;&nbsp;&nbsp;&nbsp;&boxvr;&nbsp;<span class="file">session.py</span> <span class="note">&nbsp;&nbsp;conversation persistence</span><br>
+&nbsp;&nbsp;&boxv;&nbsp;&nbsp;&nbsp;&boxvr;&nbsp;<span class="file">test_suite.py</span> <span class="note">&nbsp;&nbsp;35 automated tests</span><br>
+&nbsp;&nbsp;&boxv;&nbsp;&nbsp;&nbsp;&boxur;&nbsp;<span class="dir">tools/</span> <span class="note">&nbsp;&nbsp;per-tool modules (one file per tool)</span><br>
+&nbsp;&nbsp;&boxv;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&boxvr;&nbsp;<span class="dir">memory/</span> <span class="note">&nbsp;&nbsp;save, search, delete, list</span><br>
+&nbsp;&nbsp;&boxv;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&boxvr;&nbsp;<span class="dir">file/</span> <span class="note">&nbsp;&nbsp;read, write, edit, append</span><br>
+&nbsp;&nbsp;&boxv;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&boxvr;&nbsp;<span class="dir">search/</span> <span class="note">&nbsp;&nbsp;search_files, find, tree, list_dir</span><br>
+&nbsp;&nbsp;&boxv;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&boxvr;&nbsp;<span class="dir">system/</span> <span class="note">&nbsp;&nbsp;get_env</span><br>
+&nbsp;&nbsp;&boxv;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&boxur;&nbsp;<span class="dir">execution/</span> <span class="note">&nbsp;&nbsp;run_command, run_python</span><br>
+&nbsp;&nbsp;&boxvr;&nbsp;<span class="dir">vendor/</span><br>
+&nbsp;&nbsp;&boxv;&nbsp;&nbsp;&nbsp;&boxvr;&nbsp;<span class="file">install.sh</span> <span class="note">&nbsp;&nbsp;one-time wheel unpacker</span><br>
+&nbsp;&nbsp;&boxv;&nbsp;&nbsp;&nbsp;&boxvr;&nbsp;<span class="dir">wheels/</span> <span class="note">&nbsp;&nbsp;18 pre-downloaded .whl files (~6 MB)</span><br>
+&nbsp;&nbsp;&boxv;&nbsp;&nbsp;&nbsp;&boxur;&nbsp;<span class="dir">lib/</span> <span class="note">&nbsp;&nbsp;unpacked packages (gitignored)</span><br>
+&nbsp;&nbsp;&boxur;&nbsp;<span class="dir">docs/</span><br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&boxur;&nbsp;<span class="file">guide.html</span> <span class="note">&nbsp;&nbsp;this file</span>
+</div>
+</div></section>
+
+<footer><div class="container">Built for air-gapped environments. No internet required after setup.</div></footer>
+</body>
+</html>

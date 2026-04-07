@@ -1,0 +1,29 @@
+#!/bin/bash
+# Agentic Daisy — Claude API Connectivity Test launcher
+#
+# Prerequisites (one-time):
+#   bash vendor/install.sh
+#
+# Usage:
+#   bin/daisy-test [--api-key 'sk-ant-...'] [--model claude-haiku-4-5] [--message "hello"] [--debug]
+
+set -e
+
+# Resolve the project root (parent of bin/)
+DAISY_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+VENDOR_LIB="$DAISY_ROOT/vendor/lib"
+
+PYTHON="${DAISY_PYTHON:-python3::3.9.9}"
+
+# Check that vendored libs have been unpacked
+if [ ! -d "$VENDOR_LIB" ] || [ -z "$(ls "$VENDOR_LIB"/ 2>/dev/null)" ]; then
+    echo "ERROR: Vendored libraries not found at $VENDOR_LIB"
+    echo "Run once:  bash $DAISY_ROOT/vendor/install.sh"
+    exit 1
+fi
+
+# Prepend vendor/lib and project root to PYTHONPATH
+export DAISY_ROOT
+export PYTHONPATH="$VENDOR_LIB:$DAISY_ROOT:${PYTHONPATH:-}"
+
+exec $PYTHON "$DAISY_ROOT/claude_api/test_connectivity.py" "$@"

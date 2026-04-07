@@ -1,0 +1,10 @@
+__pycache__/
+*.py[cod]
+*.so
+vendor/lib/
+!vendor/wheels/
+.anthropic_key
+api_key
+._*
+*.tar.gz
+.daisy/
