@@ -19,11 +19,14 @@ class _ToolTimeoutError(Exception):
 
 
 def _enforce_strict_schema(schema: Dict[str, Any]) -> Dict[str, Any]:
-    """Walk an input_schema and inject ``additionalProperties: false`` on
-    every object node. Returns a new dict so the caller's copy is untouched.
-    Recurses through ``properties`` AND ``items`` (array element schemas),
-    because Anthropic strict mode rejects any nested object that omits
-    ``additionalProperties: false``. Idempotent.
+    """Walk an input_schema and inject ``additionalProperties: false`` and
+    ``required: []`` on every object node that lacks them. Returns a new
+    dict so the caller's copy is untouched. Recurses through ``properties``
+    AND ``items`` (array element schemas), because Anthropic strict mode
+    rejects any nested object that omits ``additionalProperties: false``.
+    The ``required: []`` injection is defensive: JSON Schema treats absent
+    ``required`` as equivalent to an empty list, but some strict-mode
+    validators check for the key's presence explicitly. Idempotent.
     """
     if not isinstance(schema, dict):
         return schema
@@ -31,6 +34,8 @@ def _enforce_strict_schema(schema: Dict[str, Any]) -> Dict[str, Any]:
     if out.get("type") == "object":
         if "additionalProperties" not in out:
             out["additionalProperties"] = False
+        if "required" not in out:
+            out["required"] = []
         props = out.get("properties")
         if isinstance(props, dict):
             out["properties"] = {
