@@ -24,8 +24,11 @@ DESCRIPTION = (
     "Return a statistical orientation report for a file without reading its "
     "full content: total lines/bytes, first/last N lines, severity counts, "
     "top-K normalized signature lines (deduped by stripping digits/hex/paths/"
-    "timestamps), and detected section markers. Ideal as a first step before "
-    "diving into a large log."
+    "timestamps), and detected section markers. Default section detection "
+    "matches '=== banners ===', '--- banners ---', '# markdown headings', "
+    "and '[Section]' lines; override with section_pattern. Severity buckets "
+    "default to ERROR/WARN/FATAL/INFO/DEBUG; override with severity_patterns. "
+    "Ideal as a first step before diving into an unknown large file."
 )
 INPUT_SCHEMA = {
     "type": "object",

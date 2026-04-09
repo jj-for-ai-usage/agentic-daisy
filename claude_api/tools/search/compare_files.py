@@ -1,6 +1,7 @@
-"""Tool: compare_logs -- structured comparison of two long log files.
+"""Tool: compare_files -- structured comparison of two text files.
 
-Five modes, each returning structured JSON (not diff text):
+Works on any text files (logs, configs, reports, source). Five modes,
+each returning structured JSON (not diff text):
   - signatures:      counts of normalized lines only-in-A / only-in-B / diverged
   - first_divergence: first line where normalized forms differ
   - severity_delta:   per-severity counts in both + delta
@@ -21,13 +22,16 @@ from ._log_utils import (
     signature_counts,
 )
 
-NAME = "compare_logs"
+NAME = "compare_files"
 DESCRIPTION = (
-    "Structured comparison of two log files using pattern-level (normalized) "
-    "analysis, not byte-level diff. Modes: 'signatures' (default, new/missing/"
-    "diverged normalized lines), 'first_divergence', 'severity_delta', "
-    "'grep_both' (requires pattern), 'unique_lines'. Ideal for 'why did "
-    "run B break when run A passed?'."
+    "Structured comparison of two TEXT files (logs, configs, reports, source) "
+    "using pattern-level normalized analysis, not byte-level diff. Modes: "
+    "'signatures' (default, new/missing/diverged normalized lines), "
+    "'first_divergence' (first line where normalized forms differ), "
+    "'severity_delta' (per-bucket counts), 'grep_both' (same regex against "
+    "both; requires pattern), 'unique_lines' (set difference). Ideal for "
+    "'why did run B break when run A passed?' and config-drift investigations. "
+    "For byte-perfect diffs use run_command('diff -u')."
 )
 INPUT_SCHEMA = {
     "type": "object",

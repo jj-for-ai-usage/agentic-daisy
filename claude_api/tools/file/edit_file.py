@@ -7,7 +7,9 @@ NAME = "edit_file"
 DESCRIPTION = (
     "Surgical find-and-replace in a file. Only changes the matched "
     "text -- preferred over write_file for targeted changes. "
-    "The old_string must match exactly once."
+    "The old_string must match exactly once. Use this for a single "
+    "logical change; for multi-hunk or multi-file changes use apply_patch "
+    "(atomic, with dry_run preview and automatic backup)."
 )
 INPUT_SCHEMA = {
     "type": "object",

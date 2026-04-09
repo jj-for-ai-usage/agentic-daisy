@@ -16,10 +16,13 @@ from typing import List, Optional, Tuple
 
 NAME = "apply_patch"
 DESCRIPTION = (
-    "Apply a unified diff (diff -u / git diff) to files. Atomic: if any hunk "
-    "fails to locate, nothing is written. Supports fuzz matching to tolerate "
-    "line drift. Use dry_run=true to preview changes without writing. "
-    "Backs up originals to .daisy/workspace/patch_backup_<ts>/ on successful apply."
+    "Apply a unified diff (diff -u / git diff) to one or more files. Atomic: "
+    "if any hunk in any file fails to locate, NOTHING is written. Supports "
+    "fuzz matching (default 3 lines of drift tolerance). Use dry_run=true "
+    "to preview changes without writing. Backs up originals to "
+    ".daisy/workspace/patch_backup_<ts>/ on successful apply. "
+    "Use this for multi-hunk or multi-file changes; for a single logical "
+    "find/replace, edit_file is simpler."
 )
 INPUT_SCHEMA = {
     "type": "object",

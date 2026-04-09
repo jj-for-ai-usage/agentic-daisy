@@ -16,7 +16,10 @@ DESCRIPTION = (
     "Read the last N lines of a file (default 100), or resume from a byte "
     "offset returned by a previous tail_file call. The 'new_cursor' in the "
     "response can be passed back as 'after_byte' to poll a growing file "
-    "(e.g. a running job's log) without re-reading content you've already seen."
+    "(e.g. a running job's log) without re-reading content you've already "
+    "seen. If the file has shrunk since the previous call (rotation or "
+    "truncation), the tool returns error='file_truncated' -- re-tail from "
+    "the end to resync. Response capped at 100K characters."
 )
 INPUT_SCHEMA = {
     "type": "object",

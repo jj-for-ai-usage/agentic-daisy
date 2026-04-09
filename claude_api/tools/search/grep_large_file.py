@@ -20,8 +20,10 @@ NAME = "grep_large_file"
 DESCRIPTION = (
     "Stream-grep a single file for a regex pattern. No size cap. Supports "
     "asymmetric context (before/after), pagination (offset+max_matches), and "
-    "invert mode (non-matching lines). Use this instead of search_files when "
-    "working with log files larger than 1 MB."
+    "invert mode (non-matching lines). Use this instead of search_files for "
+    "any single file larger than 1 MB (search_files silently skips those). "
+    "If you want a fixed section between two markers rather than all matches, "
+    "use extract_section instead."
 )
 INPUT_SCHEMA = {
     "type": "object",

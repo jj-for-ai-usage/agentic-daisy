@@ -8,8 +8,13 @@ from typing import List
 
 NAME = "search_files"
 DESCRIPTION = (
-    "Search file contents by regex pattern. Returns matching lines "
-    "with file paths and line numbers. Walks directories recursively."
+    "Search file contents by regex pattern across a directory tree. Returns "
+    "matching lines with file paths and line numbers. Walks directories "
+    "recursively. Optional 'include' glob filter narrows to specific "
+    "filenames (e.g. '*.py', '*.tcl'). Optional 'context_lines' returns "
+    "surrounding lines. Caps at 200 matches. "
+    "IMPORTANT: silently skips files larger than 1 MB -- for single large "
+    "files use grep_large_file instead."
 )
 INPUT_SCHEMA = {
     "type": "object",

@@ -1,6 +1,6 @@
 """Shared helpers for log-oriented search tools.
 
-Used by file_summary, compare_logs, and any future tool that needs to
+Used by file_summary, compare_files, and any future tool that needs to
 normalize log lines or bucket them by severity.
 """
 from __future__ import annotations

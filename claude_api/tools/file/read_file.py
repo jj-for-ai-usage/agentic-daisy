@@ -4,7 +4,15 @@ import json
 import os
 
 NAME = "read_file"
-DESCRIPTION = "Read the contents of a file. Returns up to 100K characters."
+DESCRIPTION = (
+    "Read the full contents of a small file (up to 100K characters). "
+    "Files larger than 100K are truncated at the start; the 'truncated' "
+    "flag indicates whether content was cut off. Files larger than 10 MB "
+    "are refused outright. For any of these cases, use: read_slice (line "
+    "or byte range), tail_file (last N lines), grep_large_file (pattern "
+    "search), file_summary (statistical overview), or extract_section "
+    "(section by markers)."
+)
 INPUT_SCHEMA = {
     "type": "object",
     "properties": {

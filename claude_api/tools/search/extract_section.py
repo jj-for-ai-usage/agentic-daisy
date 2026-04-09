@@ -17,9 +17,13 @@ from typing import Deque, List
 
 NAME = "extract_section"
 DESCRIPTION = (
-    "Extract a section of a file by pattern. Mode 'between' returns lines from "
-    "start_pattern through end_pattern; mode 'around' returns a window around "
-    "an anchor_pattern. Streaming, works on huge files."
+    "Extract a single contiguous section of a file by pattern. Mode 'between' "
+    "returns lines from the first start_pattern match through the next "
+    "end_pattern match (use 'occurrence' to pick the Nth start). Mode "
+    "'around' returns a window of 'before' lines + anchor_pattern match + "
+    "'after' lines. Streaming, works on huge files. "
+    "Use this (not grep_large_file) when you want ONE section, not a list "
+    "of matches."
 )
 INPUT_SCHEMA = {
     "type": "object",
