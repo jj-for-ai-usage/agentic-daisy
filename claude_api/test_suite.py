@@ -131,7 +131,7 @@ def test_registry_unknown():
         pass
 
 
-@test("Tool registry: all tools emit strict=True and additionalProperties=False")
+@test("Tool registry: schemas have additionalProperties=False and no tool-level strict")
 def test_registry_strict_mode():
     from claude_api.built_in_tools import create_default_registry
     from claude_api.config import DaisyConfig
@@ -167,7 +167,14 @@ def test_registry_strict_mode():
                 _walk(b, tool_name, "%s.%s[%d]" % (path, key, i))
 
     for p in params:
-        assert p.get("strict") is True, "tool %s missing strict=True" % p["name"]
+        # Tool-level strict is intentionally NOT set: Anthropic caps
+        # strict tools at 20 per request, and this framework ships >20
+        # tools by default. Schema shape still enforces structural
+        # validity on the client side.
+        assert "strict" not in p, (
+            "tool %s has tool-level strict; remove it (Anthropic caps strict tools at 20)"
+            % p["name"]
+        )
         schema = p["input_schema"]
         assert schema.get("type") == "object", (
             "tool %s root type must be object" % p["name"]

@@ -73,14 +73,20 @@ class ToolDef:
     def to_api_param(self) -> Dict[str, Any]:
         """Convert to the dict expected by messages.create(tools=[...]).
 
-        Enforces Anthropic strict mode: ``strict=True`` at the tool level and
-        ``additionalProperties: false`` on every object node in the schema.
+        Does NOT set ``strict=True`` at the tool level. Anthropic's API
+        caps strict-mode tools at 20 per request, and this framework
+        ships 48+ built-in tools plus user-defined custom tools, so
+        tool-level strict would break any request with more than 20
+        tools loaded. Schema-level guarantees
+        (``additionalProperties: false`` on every object node,
+        explicit ``required`` lists) still apply via
+        ``_enforce_strict_schema`` and are enough to stop Claude from
+        sending unknown fields.
         """
         return {
             "name": self.name,
             "description": self.description,
             "input_schema": _enforce_strict_schema(self.input_schema),
-            "strict": True,
         }
 
 
