@@ -596,9 +596,16 @@ def test_builtin_tools():
         "kg_add", "kg_query", "kg_invalidate", "kg_timeline", "kg_stats",
         # File
         "read_file", "write_file", "edit_file", "append_file",
+        "read_slice", "tail_file", "apply_patch",
+        # Search / navigation
         "list_directory", "search_files", "find_files", "directory_tree",
+        # Search: log navigation
+        "grep_large_file", "file_summary",
+        "extract_section", "compare_files",
         # System
         "get_env", "load_skill", "create_skill", "create_tool",
+        "list_tools",
+        "plan_write", "plan_show",
         # Task
         "create_task", "update_task", "list_tasks", "get_task",
         # Batch
