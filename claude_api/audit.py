@@ -206,15 +206,6 @@ class AuditLogger:
             return "warning"
         return "ok"
 
-    def log_compaction(
-        self, messages_removed: int, summary_tokens: int,
-    ) -> None:
-        self._write({
-            "event": "compaction",
-            "messages_removed": messages_removed,
-            "summary_tokens": summary_tokens,
-        })
-
     def log_tool_cache_hit(self, tool_name: str, round_num: int) -> None:
         self._write({
             "event": "tool_cache_hit",

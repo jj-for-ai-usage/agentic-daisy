@@ -245,8 +245,11 @@ class KGStore:
                      "WHERE t.subject = ?")
                 params: List[Any] = [eid]
                 if as_of:
+                    # Half-open interval [valid_from, valid_to): a fact is
+                    # visible at as_of iff valid_from <= as_of < valid_to.
+                    # This makes invalidate(as_of=today) mean "gone today".
                     q += (" AND (t.valid_from IS NULL OR t.valid_from <= ?) "
-                          "AND (t.valid_to IS NULL OR t.valid_to >= ?)")
+                          "AND (t.valid_to IS NULL OR t.valid_to > ?)")
                     params.extend([as_of, as_of])
                 for row in conn.execute(q, params).fetchall():
                     results.append({
@@ -268,8 +271,11 @@ class KGStore:
                      "WHERE t.object = ?")
                 params = [eid]
                 if as_of:
+                    # Half-open interval [valid_from, valid_to): a fact is
+                    # visible at as_of iff valid_from <= as_of < valid_to.
+                    # This makes invalidate(as_of=today) mean "gone today".
                     q += (" AND (t.valid_from IS NULL OR t.valid_from <= ?) "
-                          "AND (t.valid_to IS NULL OR t.valid_to >= ?)")
+                          "AND (t.valid_to IS NULL OR t.valid_to > ?)")
                     params.extend([as_of, as_of])
                 for row in conn.execute(q, params).fetchall():
                     results.append({

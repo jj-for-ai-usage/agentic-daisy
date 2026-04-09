@@ -14,18 +14,35 @@ import logging
 import os
 import tempfile
 from datetime import datetime, timezone
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 LOG = logging.getLogger("daisy")
 
 
-# Optional namespace fields. All are free-form strings and default to "".
-# Validation is intentionally loose because EDA workflows have many
-# legitimate hall values (timing, power, drc, floorplan, ...) and we don't
-# want to block Claude when it invents a reasonable new one.
+# Closed enum of EDA-specific hall values. `wing` and `room` remain free-form
+# strings (they name chips and blocks), but `hall` is tightly scoped so Claude
+# and programmatic callers can't sprawl the taxonomy.
+#
+# Backward compatibility: existing records on disk may carry legacy free-form
+# halls from before this closure -- they load unchanged. Only NEW writes are
+# validated.
+HALL_VALUES: Tuple[str, ...] = (
+    "timing", "power", "drc", "floorplan", "cts",
+    "synth", "constraint", "workaround", "facts",
+)
+
 _NAMESPACE_FIELDS = ("wing", "room", "hall")
 _RECORD_EXTRA_FIELDS = ("source_file", "valid_from", "valid_until",
                         "importance", "drawer_path", "added_by")
+
+
+def _validate_hall(hall: str) -> None:
+    """Raise ValueError if *hall* is non-empty and not in HALL_VALUES."""
+    if hall and hall not in HALL_VALUES:
+        raise ValueError(
+            "invalid hall %r; expected one of %s"
+            % (hall, ", ".join(HALL_VALUES))
+        )
 
 
 class MemoryStore:
@@ -132,13 +149,23 @@ class MemoryStore:
         source_file: str = "",
         valid_from: str = "",
         valid_until: str = "",
-        importance: int = 0,
+        importance: Optional[int] = None,
     ) -> str:
         """Save or update a memory. Returns confirmation JSON string."""
         if tags is None:
             tags = []
 
-        # Check if key already exists (update in place)
+        try:
+            _validate_hall(hall)
+        except ValueError as exc:
+            return json.dumps({"status": "error", "error": str(exc)})
+
+        # Check if key already exists (update in place).
+        # Convention: on update, a non-empty string overrides the prior value
+        # and an empty string preserves it. This matches how tool JSON schemas
+        # work -- Claude can omit a field entirely to mean "don't change".
+        # There is intentionally no way to clear a namespace field back to ""
+        # via an update; delete and re-create the record if you need that.
         for mem in self._memories:
             if mem["key"] == key:
                 mem["value"] = value
@@ -155,7 +182,7 @@ class MemoryStore:
                     mem["valid_from"] = valid_from
                 if valid_until:
                     mem["valid_until"] = valid_until
-                if importance:
+                if importance is not None:
                     mem["importance"] = importance
                 mem["updated"] = self._now_iso()
                 self._save()
@@ -181,7 +208,7 @@ class MemoryStore:
             record["valid_from"] = valid_from
         if valid_until:
             record["valid_until"] = valid_until
-        if importance:
+        if importance is not None:
             record["importance"] = importance
 
         self._memories.append(record)
@@ -308,7 +335,7 @@ class MemoryStore:
         hall: str = "",
         source_file: str = "",
         added_by: str = "agent",
-        importance: int = 0,
+        importance: Optional[int] = None,
     ) -> str:
         """Archive verbatim content under ``drawers/``.
 
@@ -322,6 +349,11 @@ class MemoryStore:
                 "status": "error",
                 "error": "wing and room are required",
             })
+
+        try:
+            _validate_hall(hall)
+        except ValueError as exc:
+            return json.dumps({"status": "error", "error": str(exc)})
 
         # Resolve source content
         body: str
@@ -400,11 +432,21 @@ class MemoryStore:
             record["hall"] = hall
         if source_file:
             record["source_file"] = source_file
-        if importance:
+        if importance is not None:
             record["importance"] = importance
 
+        # Index the drawer. If the index save fails, clean up the drawer
+        # file so we don't leave an orphan on disk that no record points to.
         self._memories.append(record)
-        self._save()
+        try:
+            self._save()
+        except BaseException:
+            self._memories.pop()
+            try:
+                os.unlink(drawer_path)
+            except OSError:
+                pass
+            raise
 
         return json.dumps({
             "status": "created",

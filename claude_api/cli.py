@@ -78,10 +78,8 @@ def parse_args() -> argparse.Namespace:
                          "the budget when it's exceeded (default: prompt enabled)")
     ap.add_argument("--no-stream", action="store_true",
                     help="Disable streaming output (wait for full reply, then print)")
-    ap.add_argument("--no-rich", action="store_true",
-                    help="Disable rich/markdown rendering even if rich is installed")
     ap.add_argument("--compaction-threshold", type=int, default=80_000,
-                    help="Input-token threshold to trigger conversation compaction (default: 80000)")
+                    help="Input-token threshold for server-side context compaction (default: 80000)")
     ap.add_argument("--temperature", type=float, default=0.3,
                     help="Sampling temperature 0.0-1.0 (default: 0.3, lower = more consistent)")
     ap.add_argument("--max-tool-rounds", type=int, default=20,
@@ -109,9 +107,6 @@ def main() -> None:
     user_defaults = _load_user_config()
     if "model" in user_defaults and args.model == DEFAULT_MODEL:
         args.model = user_defaults["model"]
-
-    if args.no_rich:
-        render.set_force_plain(True)
 
     budget = args.budget if args.budget > 0 else None  # 0 = unlimited
     config = DaisyConfig(

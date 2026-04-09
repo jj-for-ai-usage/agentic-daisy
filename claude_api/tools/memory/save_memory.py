@@ -1,4 +1,6 @@
 """Tool: save_memory -- persist information across conversations."""
+from ...memory import HALL_VALUES
+
 NAME = "save_memory"
 DESCRIPTION = (
     "Save a piece of information for later retrieval. "
@@ -29,10 +31,11 @@ INPUT_SCHEMA = {
         },
         "hall": {
             "type": "string",
+            "enum": list(HALL_VALUES),
             "description": (
-                "Optional category within the room. Free-form; suggested "
-                "values for EDA: timing, power, drc, floorplan, cts, "
-                "synth, constraint, workaround, facts."
+                "Optional category within the room. Must be one of: "
+                "timing, power, drc, floorplan, cts, synth, constraint, "
+                "workaround, facts."
             ),
         },
         "source_file": {

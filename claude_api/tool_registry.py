@@ -17,6 +17,26 @@ class _ToolTimeoutError(Exception):
     """Raised when a tool handler exceeds TOOL_TIMEOUT."""
 
 
+def _enforce_strict_schema(schema: Dict[str, Any]) -> Dict[str, Any]:
+    """Walk an input_schema and inject ``additionalProperties: false`` on
+    every object node. Mutates a shallow copy and returns it so the caller
+    can keep the original untouched. Idempotent.
+    """
+    if not isinstance(schema, dict):
+        return schema
+    out = dict(schema)
+    if out.get("type") == "object":
+        if "additionalProperties" not in out:
+            out["additionalProperties"] = False
+        props = out.get("properties")
+        if isinstance(props, dict):
+            new_props = {}
+            for k, v in props.items():
+                new_props[k] = _enforce_strict_schema(v)
+            out["properties"] = new_props
+    return out
+
+
 class ToolDef:
     """Definition of a single tool that Claude can call."""
 
@@ -33,11 +53,16 @@ class ToolDef:
         self.handler = handler
 
     def to_api_param(self) -> Dict[str, Any]:
-        """Convert to the dict expected by messages.create(tools=[...])."""
+        """Convert to the dict expected by messages.create(tools=[...]).
+
+        Enforces Anthropic strict mode: ``strict=True`` at the tool level and
+        ``additionalProperties: false`` on every object node in the schema.
+        """
         return {
             "name": self.name,
             "description": self.description,
-            "input_schema": self.input_schema,
+            "input_schema": _enforce_strict_schema(self.input_schema),
+            "strict": True,
         }
 
 

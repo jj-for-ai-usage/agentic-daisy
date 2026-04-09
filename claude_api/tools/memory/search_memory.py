@@ -1,4 +1,6 @@
 """Tool: search_memory -- find saved memories by keyword, tag, or namespace."""
+from ...memory import HALL_VALUES
+
 NAME = "search_memory"
 DESCRIPTION = (
     "Search saved memories. Filter by substring (keys and values), tag, "
@@ -13,7 +15,11 @@ INPUT_SCHEMA = {
         "tag": {"type": "string", "description": "Filter by exact tag"},
         "wing": {"type": "string", "description": "Filter by wing (chip/design)"},
         "room": {"type": "string", "description": "Filter by room (block)"},
-        "hall": {"type": "string", "description": "Filter by hall (category)"},
+        "hall": {
+            "type": "string",
+            "enum": list(HALL_VALUES),
+            "description": "Filter by hall (category)",
+        },
         "as_of": {
             "type": "string",
             "description": (

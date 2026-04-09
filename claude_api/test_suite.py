@@ -82,7 +82,6 @@ def test_imports():
     from claude_api.tools.execution.run_command import make_handler as _rc
     from claude_api.tools.execution.run_python import make_handler as _rp
     from claude_api.session import SessionManager
-    from claude_api.compaction import ConversationCompactor
     from claude_api.task_store import TaskStore
     from claude_api.batch_store import BatchStore
     from claude_api.cli import parse_args
@@ -132,6 +131,35 @@ def test_registry_unknown():
         pass
 
 
+@test("Tool registry: all tools emit strict=True and additionalProperties=False")
+def test_registry_strict_mode():
+    from claude_api.built_in_tools import create_default_registry
+    from claude_api.config import DaisyConfig
+    d = tempfile.mkdtemp()
+    config = DaisyConfig(
+        api_key="test",
+        memory_dir=os.path.join(d, "memory"),
+        log_dir=os.path.join(d, "logs"),
+    )
+    reg = create_default_registry(config)
+    params = reg.list_api_params()
+    assert len(params) > 0, "no tools registered"
+    for p in params:
+        assert p.get("strict") is True, "tool %s missing strict=True" % p["name"]
+        schema = p["input_schema"]
+        assert schema.get("type") == "object", (
+            "tool %s root type must be object" % p["name"]
+        )
+        assert schema.get("additionalProperties") is False, (
+            "tool %s missing additionalProperties=False" % p["name"]
+        )
+        # Every declared property must carry a type or enum
+        for prop_name, prop_def in schema.get("properties", {}).items():
+            assert "type" in prop_def or "enum" in prop_def, (
+                "tool %s property %s has no type" % (p["name"], prop_name)
+            )
+
+
 @test("Memory: save + search + list + delete")
 def test_memory():
     from claude_api.memory import MemoryStore
@@ -162,6 +190,38 @@ def test_memory():
         # Delete non-existent
         r = json.loads(mem.delete_memory("nope"))
         assert r["status"] == "not_found"
+    finally:
+        shutil.rmtree(d)
+
+
+@test("Memory: hall enum is closed")
+def test_memory_hall_enum():
+    from claude_api.memory import MemoryStore, HALL_VALUES
+    d = tempfile.mkdtemp()
+    try:
+        mem = MemoryStore(d)
+        # Valid hall accepted
+        r = json.loads(mem.save_memory(
+            "k1", "v1", wing="chipA", room="core", hall="timing",
+        ))
+        assert r["status"] == "created"
+        # Invalid hall rejected
+        r = json.loads(mem.save_memory(
+            "k2", "v2", wing="chipA", room="core", hall="garbage",
+        ))
+        assert r["status"] == "error"
+        assert "invalid hall" in r["error"]
+        # Empty hall allowed (optional)
+        r = json.loads(mem.save_memory("k3", "v3", wing="chipA", room="core"))
+        assert r["status"] == "created"
+        # add_drawer also validated
+        r = json.loads(mem.add_drawer(
+            wing="chipA", room="core", content="log body", hall="not_real",
+        ))
+        assert r["status"] == "error"
+        # Enum covers the documented EDA values
+        assert "timing" in HALL_VALUES
+        assert "facts" in HALL_VALUES
     finally:
         shutil.rmtree(d)
 
@@ -989,79 +1049,68 @@ def test_tool_cache():
     assert key1 != key3, "Different input should produce different key"
 
 
-@test("Compaction: summarizes old messages")
-def test_compaction():
-    from claude_api.compaction import ConversationCompactor
-    # Create a mock client with a fake messages.create
-    class FakeResponse:
-        class content_block:
-            text = "Summary: user asked about X, assistant explained Y."
-        content = [content_block()]
-    class FakeMessages:
+@test("Context management: server-side compaction kwargs")
+def test_server_context_management():
+    """Assert run_agent_loop asks the beta API for server-side compaction.
+
+    We intercept the beta messages.create call on a FakeClient, let the agent
+    loop build call_kwargs from a DaisyConfig with a known threshold, then
+    check the kwargs contain the ``compact_20260112`` edit the SDK expects.
+    """
+    from claude_api.config import DaisyConfig
+    from claude_api.audit import AuditLogger
+    from claude_api.tool_registry import ToolRegistry
+    from claude_api import agent_loop as AL
+
+    captured: dict = {}
+
+    class FakeResp:
+        class usage:
+            input_tokens = 10
+            output_tokens = 10
+            cache_creation_input_tokens = 0
+            cache_read_input_tokens = 0
+        stop_reason = "end_turn"
+        content: list = []
+
+    class FakeBetaMessages:
         def create(self, **kwargs):
-            return FakeResponse()
+            captured.update(kwargs)
+            return FakeResp()
+
+    class FakeBeta:
+        messages = FakeBetaMessages()
+
     class FakeClient:
-        messages = FakeMessages()
+        beta = FakeBeta()
 
-    compactor = ConversationCompactor(FakeClient(), threshold_tokens=100)
-    history = [
-        {"role": "user", "content": "msg1"},
-        {"role": "assistant", "content": "resp1"},
-        {"role": "user", "content": "msg2"},
-        {"role": "assistant", "content": "resp2"},
-        {"role": "user", "content": "msg3"},
-        {"role": "assistant", "content": "resp3"},
-        {"role": "user", "content": "msg4"},
-        {"role": "assistant", "content": "resp4"},
-    ]
-    # Threshold too high -- should not compact
-    result = compactor.maybe_compact(history, last_input_tokens=50)
-    assert result is False
-    assert len(history) == 8
+    # Monkey-patch anthropic.Anthropic to return our fake client
+    import anthropic
+    orig_cls = anthropic.Anthropic
+    try:
+        anthropic.Anthropic = lambda **kw: FakeClient()  # type: ignore[misc]
+        d = tempfile.mkdtemp()
+        try:
+            config = DaisyConfig(
+                api_key="test",
+                memory_dir=os.path.join(d, "memory"),
+                log_dir=os.path.join(d, "logs"),
+                compaction_threshold=12345,
+            )
+            audit = AuditLogger(config.log_dir, config.model)
+            registry = ToolRegistry()  # no tools
+            AL.run_agent_loop(config, "hi", registry, audit)
+        finally:
+            shutil.rmtree(d, ignore_errors=True)
+    finally:
+        anthropic.Anthropic = orig_cls
 
-    # Threshold exceeded -- should compact
-    result = compactor.maybe_compact(history, last_input_tokens=200)
-    assert result is True
-    # Should have: summary (user) + ack (assistant) + last 4 messages
-    assert len(history) == 6, "Expected 6 messages after compaction, got %d" % len(history)
-    assert "[Conversation Summary]" in history[0]["content"]
-    assert history[1]["role"] == "assistant"
-    # Last 4 should be preserved
-    assert history[2]["content"] == "msg3"
-    assert history[5]["content"] == "resp4"
-
-
-@test("Compaction: handles tool result blocks in history")
-def test_compaction_tool_blocks():
-    from claude_api.compaction import ConversationCompactor
-    class FakeResponse:
-        class content_block:
-            text = "Summary with tool results."
-        content = [content_block()]
-    class FakeMessages:
-        def create(self, **kwargs):
-            return FakeResponse()
-    class FakeClient:
-        messages = FakeMessages()
-
-    compactor = ConversationCompactor(FakeClient(), threshold_tokens=100)
-    history = [
-        {"role": "user", "content": "read this file"},
-        {"role": "assistant", "content": [
-            {"type": "tool_use", "id": "t1", "name": "read_file", "input": {"path": "/tmp/x"}},
-        ]},
-        {"role": "user", "content": [
-            {"type": "tool_result", "tool_use_id": "t1", "content": "file content here"},
-        ]},
-        {"role": "assistant", "content": [{"type": "text", "text": "The file contains..."}]},
-        {"role": "user", "content": "now search for errors"},
-        {"role": "assistant", "content": "found 3 errors"},
-        {"role": "user", "content": "thanks"},
-        {"role": "assistant", "content": "you're welcome"},
-    ]
-    result = compactor.maybe_compact(history, last_input_tokens=200)
-    assert result is True, "Should compact 8 messages (keep 4, summarize 4)"
-    assert "[Conversation Summary]" in history[0]["content"]
+    cm = captured.get("context_management")
+    assert cm is not None, "context_management kwarg missing"
+    edits = cm.get("edits", [])
+    assert len(edits) == 1
+    assert edits[0]["type"] == "compact_20260112"
+    assert edits[0]["trigger"] == {"type": "input_tokens", "value": 12345}
 
 
 @test("CLI: --list-sessions exits 0")
@@ -1141,7 +1190,9 @@ OFFLINE_TESTS = [
     test_registry,
     test_registry_kwargs_filter,
     test_registry_unknown,
+    test_registry_strict_mode,
     test_memory,
+    test_memory_hall_enum,
     test_memory_corruption,
     test_memory_atomic,
     test_memory_permissions,
@@ -1170,8 +1221,7 @@ OFFLINE_TESTS = [
     test_budget,
     test_budget_unlimited,
     test_tool_cache,
-    test_compaction,
-    test_compaction_tool_blocks,
+    test_server_context_management,
     test_task_lifecycle,
     test_task_corruption,
     test_task_persistence,
@@ -1203,7 +1253,7 @@ QUICK_TESTS = [
     test_system_prompt,
     test_budget,
     test_tool_cache,
-    test_compaction,
+    test_server_context_management,
     test_task_lifecycle,
     test_batch_store,
     test_get_batch_results_tool,

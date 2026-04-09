@@ -44,10 +44,14 @@ _CACHEABLE_TOOLS = frozenset({
 
 def _do_api_call(client, call_kwargs: Dict[str, Any], stream_callback) -> Any:
     """One API call. If stream_callback is provided, stream text deltas to it
-    and return the final assembled Message; otherwise do a plain create()."""
+    and return the final assembled Message; otherwise do a plain create().
+
+    Uses the ``beta.messages`` namespace because the ``context_management``
+    kwarg (server-side compaction) is only available there in anthropic 0.88.
+    """
     if stream_callback is None:
-        return client.messages.create(**call_kwargs)
-    with client.messages.stream(**call_kwargs) as stream:
+        return client.beta.messages.create(**call_kwargs)
+    with client.beta.messages.stream(**call_kwargs) as stream:
         for text in stream.text_stream:
             stream_callback(text)
         return stream.get_final_message()
@@ -109,39 +113,6 @@ def _spill_to_file(content: str, tool_name: str, config) -> str:
     with open(path, "w") as f:
         f.write(content)
     return path
-
-
-def _validate_tool_pairing(history: List[Dict[str, Any]]) -> Optional[str]:
-    """Return an error string if any assistant(tool_use) lacks matching tool_results.
-
-    The Anthropic API requires every tool_use id in an assistant message to have
-    a corresponding tool_result block in the immediately-following user message.
-    This is a backstop to catch history corruption before we send a guaranteed-400
-    request.
-    """
-    for i, msg in enumerate(history):
-        if msg.get("role") != "assistant":
-            continue
-        content = msg.get("content")
-        if not isinstance(content, list):
-            continue
-        pending = [
-            b.get("id") for b in content
-            if isinstance(b, dict) and b.get("type") == "tool_use"
-        ]
-        if not pending:
-            continue
-        nxt = history[i + 1] if i + 1 < len(history) else None
-        if not nxt or nxt.get("role") != "user" or not isinstance(nxt.get("content"), list):
-            return "orphan tool_use at index %d" % i
-        got = {
-            b.get("tool_use_id") for b in nxt["content"]
-            if isinstance(b, dict) and b.get("type") == "tool_result"
-        }
-        missing = [tid for tid in pending if tid not in got]
-        if missing:
-            return "missing tool_results at index %d: %s" % (i, missing)
-    return None
 
 
 def _rollback_pending_user(history: List[Dict[str, Any]]) -> None:
@@ -223,32 +194,7 @@ def run_agent_loop(
     # Per-turn tool result cache (read-only tools only)
     tool_cache: Dict[str, str] = {}
 
-    # Conversation compactor (lazy import to avoid circular deps)
-    from .compaction import ConversationCompactor
-    compactor = ConversationCompactor(
-        client, threshold_tokens=config.compaction_threshold,
-    )
-
-    last_input_tokens = 0
-
     for round_num in range(config.max_tool_rounds):
-        # Compact conversation if it's getting large
-        if round_num > 0 and last_input_tokens > 0:
-            compacted = compactor.maybe_compact(
-                conversation_history, last_input_tokens, audit,
-            )
-            if compacted:
-                print("[Daisy] compacting conversation...", file=sys.stderr, flush=True)
-                LOG.info("Conversation compacted to save tokens.")
-                pairing_err = _validate_tool_pairing(conversation_history)
-                if pairing_err:
-                    LOG.error("Compaction corrupted history: %s", pairing_err)
-                    return (
-                        "[Daisy: internal error -- compaction left conversation in an "
-                        "inconsistent state (%s). Please start a new session.]"
-                        % pairing_err
-                    )
-
         if round_num == 0:
             print("[Daisy] thinking...", file=sys.stderr, flush=True)
 
@@ -269,6 +215,22 @@ def run_agent_loop(
         if registry.has_tools():
             call_kwargs["tools"] = registry.list_api_params(cache_last=True)
 
+        # Server-side context management: Anthropic automatically compacts
+        # the conversation when the input crosses config.compaction_threshold
+        # tokens. Replaces daisy's hand-rolled ConversationCompactor. Only
+        # available on the beta messages namespace, which _do_api_call uses.
+        call_kwargs["context_management"] = {
+            "edits": [
+                {
+                    "type": "compact_20260112",
+                    "trigger": {
+                        "type": "input_tokens",
+                        "value": config.compaction_threshold,
+                    },
+                },
+            ],
+        }
+
         LOG.debug("Round %d: sending request to %s", round_num, config.model)
         t0 = time.time()
         try:
@@ -282,26 +244,8 @@ def run_agent_loop(
                 MAX_API_RETRIES + 1, exc,
             )
         except anthropic.APIStatusError as exc:
-            # Recover from oversized prompt via emergency compaction
-            if exc.status_code == 400 and "prompt is too long" in str(exc):
-                LOG.warning(
-                    "Prompt too long, attempting emergency compaction..."
-                )
-                compacted = compactor.maybe_compact(
-                    conversation_history, 999_999, audit,
-                )
-                if compacted:
-                    pairing_err = _validate_tool_pairing(conversation_history)
-                    if pairing_err:
-                        LOG.error(
-                            "Emergency compaction corrupted history: %s", pairing_err,
-                        )
-                        return (
-                            "[Daisy: internal error -- emergency compaction left "
-                            "conversation inconsistent (%s). Please start a new session.]"
-                            % pairing_err
-                        )
-                    continue  # retry with compacted history
+            # Server-side compaction handles oversized prompts upstream, so
+            # we no longer have a client-side emergency compaction path.
             _rollback_pending_user(conversation_history)
             return "[Daisy: API error %d after retries -- %s]" % (
                 exc.status_code, exc,
@@ -312,8 +256,6 @@ def run_agent_loop(
         # ([Daisy] running ..., [Daisy] thinking ...) doesn't collide.
         if stream_callback is not None:
             stream_callback("\n")
-
-        last_input_tokens = response.usage.input_tokens
 
         # Track cache tokens if available
         cache_write = getattr(response.usage, "cache_creation_input_tokens", 0) or 0

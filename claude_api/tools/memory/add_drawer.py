@@ -1,4 +1,6 @@
 """Tool: add_drawer -- archive verbatim content under a wing/room."""
+from ...memory import HALL_VALUES
+
 NAME = "add_drawer"
 DESCRIPTION = (
     "Archive a verbatim blob (log excerpt, report, etc.) under a "
@@ -27,7 +29,11 @@ INPUT_SCHEMA = {
         },
         "hall": {
             "type": "string",
-            "description": "Optional category (timing, power, drc, ...).",
+            "enum": list(HALL_VALUES),
+            "description": (
+                "Optional category. Must be one of: timing, power, drc, "
+                "floorplan, cts, synth, constraint, workaround, facts."
+            ),
         },
         "source_file": {
             "type": "string",

@@ -1,4 +1,6 @@
 """Tool: list_memories -- list saved memory keys, optionally by namespace."""
+from ...memory import HALL_VALUES
+
 NAME = "list_memories"
 DESCRIPTION = (
     "List saved memory keys with their tags, namespace, and last-updated "
@@ -9,7 +11,11 @@ INPUT_SCHEMA = {
     "properties": {
         "wing": {"type": "string", "description": "Filter by wing"},
         "room": {"type": "string", "description": "Filter by room"},
-        "hall": {"type": "string", "description": "Filter by hall"},
+        "hall": {
+            "type": "string",
+            "enum": list(HALL_VALUES),
+            "description": "Filter by hall",
+        },
     },
 }
 

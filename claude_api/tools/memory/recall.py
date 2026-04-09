@@ -1,4 +1,5 @@
 """Tool: recall -- L2 on-demand retrieval by wing/room/hall."""
+from claude_api.memory import HALL_VALUES
 from claude_api.memory_stack import Layer2
 
 NAME = "recall"
@@ -13,7 +14,7 @@ INPUT_SCHEMA = {
     "properties": {
         "wing": {"type": "string"},
         "room": {"type": "string"},
-        "hall": {"type": "string"},
+        "hall": {"type": "string", "enum": list(HALL_VALUES)},
         "n_results": {"type": "integer", "description": "Max results, default 10."},
     },
 }
