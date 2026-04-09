@@ -218,21 +218,29 @@ def run_agent_loop(
         if registry.has_tools():
             call_kwargs["tools"] = registry.list_api_params(cache_last=True)
 
-        # Server-side context management: Anthropic automatically compacts
-        # the conversation when the input crosses config.compaction_threshold
-        # tokens. Replaces daisy's hand-rolled ConversationCompactor. Only
-        # available on the beta messages namespace, which _do_api_call uses.
-        # REQUIRES the 'context-management-2025-06-27' beta header -- without
-        # it the server rejects the context_management field with
-        # "400 Extra inputs are not permitted".
+        # Server-side context management: Anthropic automatically clears
+        # old tool_use/tool_result blocks when the conversation crosses
+        # config.compaction_threshold input tokens, keeping the most recent
+        # tool uses to preserve working context. Replaces daisy's
+        # hand-rolled ConversationCompactor. Only available on the beta
+        # messages namespace (which _do_api_call uses) with the
+        # 'context-management-2025-06-27' beta header.
+        #
+        # Edit type history: 'compact_20260112' is in the anthropic 0.88
+        # SDK types but the server's context-management beta only accepts
+        # 'clear_thinking_20251015' and 'clear_tool_uses_20250919'.
+        # clear_tool_uses is the right choice for Daisy's tool-heavy
+        # EDA workload -- log excerpts and command outputs accumulate
+        # fast, and clearing old tool blocks is the biggest token win.
         call_kwargs["context_management"] = {
             "edits": [
                 {
-                    "type": "compact_20260112",
+                    "type": "clear_tool_uses_20250919",
                     "trigger": {
                         "type": "input_tokens",
                         "value": config.compaction_threshold,
                     },
+                    "keep": {"type": "tool_uses", "value": 3},
                 },
             ],
         }
