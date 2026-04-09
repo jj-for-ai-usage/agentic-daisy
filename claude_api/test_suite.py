@@ -144,16 +144,36 @@ def test_registry_strict_mode():
     reg = create_default_registry(config)
     params = reg.list_api_params()
     assert len(params) > 0, "no tools registered"
+
+    def _walk(node, tool_name, path):
+        """Recursively assert every object node has additionalProperties: false."""
+        if not isinstance(node, dict):
+            return
+        if node.get("type") == "object":
+            assert node.get("additionalProperties") is False, (
+                "tool %s: object at %s missing additionalProperties=False"
+                % (tool_name, path or "<root>")
+            )
+            for k, v in (node.get("properties") or {}).items():
+                _walk(v, tool_name, "%s.properties.%s" % (path, k))
+        items = node.get("items")
+        if isinstance(items, dict):
+            _walk(items, tool_name, "%s.items" % path)
+        elif isinstance(items, list):
+            for i, it in enumerate(items):
+                _walk(it, tool_name, "%s.items[%d]" % (path, i))
+        for key in ("oneOf", "anyOf", "allOf"):
+            for i, b in enumerate(node.get(key) or []):
+                _walk(b, tool_name, "%s.%s[%d]" % (path, key, i))
+
     for p in params:
         assert p.get("strict") is True, "tool %s missing strict=True" % p["name"]
         schema = p["input_schema"]
         assert schema.get("type") == "object", (
             "tool %s root type must be object" % p["name"]
         )
-        assert schema.get("additionalProperties") is False, (
-            "tool %s missing additionalProperties=False" % p["name"]
-        )
-        # Every declared property must carry a type or enum
+        _walk(schema, p["name"], "")
+        # Every declared top-level property must carry a type or enum
         for prop_name, prop_def in schema.get("properties", {}).items():
             assert "type" in prop_def or "enum" in prop_def, (
                 "tool %s property %s has no type" % (p["name"], prop_name)

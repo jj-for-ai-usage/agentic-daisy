@@ -12,6 +12,7 @@ DESCRIPTION = (
 )
 INPUT_SCHEMA = {
     "type": "object",
+    "additionalProperties": False,
     "properties": {
         "name": {
             "type": "string",
@@ -21,9 +22,15 @@ INPUT_SCHEMA = {
             "type": "string",
             "description": "Tool description (shown to Claude when selecting tools)",
         },
-        "input_schema": {
-            "type": "object",
-            "description": "JSON Schema for tool parameters (properties, required, etc.)",
+        "input_schema_json": {
+            "type": "string",
+            "description": (
+                "JSON-encoded JSON Schema for the new tool's parameters. "
+                "Example: '{\"type\": \"object\", \"properties\": "
+                "{\"path\": {\"type\": \"string\"}}, \"required\": [\"path\"]}'. "
+                "Passed as a string because Anthropic strict mode does not "
+                "allow free-form object fields."
+            ),
         },
         "handler_code": {
             "type": "string",
@@ -39,7 +46,7 @@ INPUT_SCHEMA = {
             "description": "Where to save: 'user' (~/.daisy/tools/, default) or 'project' (.daisy/tools/)",
         },
     },
-    "required": ["name", "description", "input_schema", "handler_code"],
+    "required": ["name", "description", "input_schema_json", "handler_code"],
 }
 
 
@@ -47,7 +54,7 @@ def make_handler(config=None, registry=None, **kwargs):
     from claude_api.config import USER_TOOLS_DIR, DEFAULT_CUSTOM_TOOLS_DIR
     from claude_api.custom_tools import CustomToolLoader
 
-    def _handler(name, description, input_schema, handler_code, location="user"):
+    def _handler(name, description, input_schema_json, handler_code, location="user"):
         # Sanitize name
         safe_name = re.sub(r"[^a-z0-9_]", "_", name.lower())
         # Check for name collision with existing tools
@@ -57,7 +64,15 @@ def make_handler(config=None, registry=None, **kwargs):
                 "name": safe_name,
                 "error": "A tool named '%s' already exists. Choose a different name." % safe_name,
             })
-        # Ensure input_schema has required "type" field for Anthropic API
+        # Parse the JSON-encoded schema
+        try:
+            input_schema = json.loads(input_schema_json)
+        except (TypeError, ValueError) as exc:
+            return json.dumps({
+                "status": "schema_error",
+                "name": safe_name,
+                "error": "input_schema_json is not valid JSON: %s" % exc,
+            })
         if not isinstance(input_schema, dict):
             input_schema = {"type": "object"}
         if "type" not in input_schema:

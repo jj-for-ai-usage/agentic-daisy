@@ -103,38 +103,38 @@ def _call_api_with_retry(
 
 
 def _spill_to_file(content: str, tool_name: str, config) -> str:
-    """Save oversized tool output to a workspace file, return the path."""
+    """Save oversized tool output to a workspace file, return the path.
+
+    Filename uses seconds + microseconds + pid so two spills within the same
+    wall-clock second (back-to-back tools) don't collide.
+    """
+    from datetime import datetime
     workspace = getattr(config, "workspace_dir", "/tmp")
     os.makedirs(workspace, exist_ok=True)
-    ts = time.strftime("%Y%m%d_%H%M%S")
+    ts = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
     safe_name = re.sub(r'[^a-zA-Z0-9_\-]', '_', tool_name)
-    filename = "tool_%s_%s.txt" % (safe_name, ts)
+    filename = "tool_%s_%s_%d.txt" % (safe_name, ts, os.getpid())
     path = os.path.join(workspace, filename)
     with open(path, "w") as f:
         f.write(content)
     return path
 
 
-def _rollback_pending_user(history: List[Dict[str, Any]]) -> None:
-    """Pop a trailing user message before an early return.
+def _rollback_to_snapshot(history: List[Dict[str, Any]], snapshot_len: int) -> None:
+    """Truncate *history* back to its pre-invocation length.
 
-    When run_agent_loop bails out after appending the user message but before
-    receiving an assistant reply, the dangling user message would collide with
-    the next interactive prompt (two consecutive user messages → API rejects).
+    When run_agent_loop bails out mid-turn (auth error, connection error,
+    budget exceeded, ...), everything it appended since the snapshot must be
+    discarded in one shot: the initial user(text), any assistant(tool_use)
+    blocks, and any user(tool_results) from completed rounds. A naive
+    "pop last user" is wrong after a tool-use round because popping
+    user(tool_results) would orphan the preceding assistant(tool_use),
+    while leaving it would give two consecutive user messages on the next
+    turn. Truncating to the snapshot length handles both cases.
     """
-    if not history:
+    if snapshot_len < 0 or snapshot_len > len(history):
         return
-    last = history[-1]
-    if last.get("role") != "user":
-        return
-    # Never pop a tool_results message -- that would orphan the preceding
-    # assistant(tool_use). Only pop a plain text user prompt.
-    content = last.get("content")
-    if isinstance(content, list) and any(
-        isinstance(b, dict) and b.get("type") == "tool_result" for b in content
-    ):
-        return
-    history.pop()
+    del history[snapshot_len:]
 
 
 def _make_cache_key(tool_name: str, tool_input: dict) -> str:
@@ -186,6 +186,9 @@ def run_agent_loop(
     if conversation_history is None:
         conversation_history = []
 
+    # Snapshot before appending anything so bail-out paths can restore the
+    # history to a valid pre-invocation state in one operation.
+    history_snapshot_len = len(conversation_history)
     conversation_history.append({"role": "user", "content": user_message})
 
     # Build kwargs for the API call
@@ -236,17 +239,17 @@ def run_agent_loop(
         try:
             response = _call_api_with_retry(client, call_kwargs, stream_callback)
         except anthropic.AuthenticationError as exc:
-            _rollback_pending_user(conversation_history)
+            _rollback_to_snapshot(conversation_history, history_snapshot_len)
             return "[Daisy: authentication failed -- check your API key: %s]" % exc
         except anthropic.APIConnectionError as exc:
-            _rollback_pending_user(conversation_history)
+            _rollback_to_snapshot(conversation_history, history_snapshot_len)
             return "[Daisy: connection failed after %d retries -- %s]" % (
                 MAX_API_RETRIES + 1, exc,
             )
         except anthropic.APIStatusError as exc:
             # Server-side compaction handles oversized prompts upstream, so
             # we no longer have a client-side emergency compaction path.
-            _rollback_pending_user(conversation_history)
+            _rollback_to_snapshot(conversation_history, history_snapshot_len)
             return "[Daisy: API error %d after retries -- %s]" % (
                 exc.status_code, exc,
             )
@@ -286,7 +289,7 @@ def run_agent_loop(
         budget_status = audit.check_budget()
         if budget_status == "exceeded":
             cost = audit.get_session_cost()
-            _rollback_pending_user(conversation_history)
+            _rollback_to_snapshot(conversation_history, history_snapshot_len)
             return (
                 "[Daisy: session budget of $%.2f reached (current: $%.4f). "
                 "Use --budget to increase or --budget 0 for unlimited.]"

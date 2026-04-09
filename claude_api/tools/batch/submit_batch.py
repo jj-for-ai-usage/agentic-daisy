@@ -13,6 +13,7 @@ DESCRIPTION = (
 )
 INPUT_SCHEMA = {
     "type": "object",
+    "additionalProperties": False,
     "properties": {
         "task_id": {
             "type": "string",
@@ -30,6 +31,7 @@ INPUT_SCHEMA = {
             "type": "array",
             "items": {
                 "type": "object",
+                "additionalProperties": False,
                 "properties": {
                     "label": {
                         "type": "string",
@@ -50,8 +52,7 @@ INPUT_SCHEMA = {
                 },
                 "required": ["label", "prompt"],
             },
-            "description": "List of batch requests. Each prompt should contain PRE-EXTRACTED data.",
-            "minItems": 1,
+            "description": "List of batch requests (minimum 1). Each prompt should contain PRE-EXTRACTED data.",
         },
     },
     "required": ["requests"],
@@ -69,6 +70,8 @@ def make_handler(batch_store=None, task_store=None, config=None, **kwargs):
     import anthropic
 
     def _handler(requests, task_id=None, task_name=None, model=None):
+        if not requests:
+            return json.dumps({"error": "requests must contain at least one item"})
         client = anthropic.Anthropic(api_key=config.api_key)
         model = model or "claude-haiku-4-5"
 

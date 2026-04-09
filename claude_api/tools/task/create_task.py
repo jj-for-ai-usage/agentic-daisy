@@ -7,6 +7,7 @@ DESCRIPTION = (
 )
 INPUT_SCHEMA = {
     "type": "object",
+    "additionalProperties": False,
     "properties": {
         "name": {
             "type": "string",
@@ -30,6 +31,7 @@ INPUT_SCHEMA = {
             "type": "array",
             "items": {
                 "type": "object",
+                "additionalProperties": False,
                 "properties": {
                     "name": {"type": "string"},
                     "status": {"type": "string", "enum": ["pending", "active", "done", "skipped"]},

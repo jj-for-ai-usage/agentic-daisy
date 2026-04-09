@@ -19,8 +19,10 @@ class _ToolTimeoutError(Exception):
 
 def _enforce_strict_schema(schema: Dict[str, Any]) -> Dict[str, Any]:
     """Walk an input_schema and inject ``additionalProperties: false`` on
-    every object node. Mutates a shallow copy and returns it so the caller
-    can keep the original untouched. Idempotent.
+    every object node. Returns a new dict so the caller's copy is untouched.
+    Recurses through ``properties`` AND ``items`` (array element schemas),
+    because Anthropic strict mode rejects any nested object that omits
+    ``additionalProperties: false``. Idempotent.
     """
     if not isinstance(schema, dict):
         return schema
@@ -30,10 +32,20 @@ def _enforce_strict_schema(schema: Dict[str, Any]) -> Dict[str, Any]:
             out["additionalProperties"] = False
         props = out.get("properties")
         if isinstance(props, dict):
-            new_props = {}
-            for k, v in props.items():
-                new_props[k] = _enforce_strict_schema(v)
-            out["properties"] = new_props
+            out["properties"] = {
+                k: _enforce_strict_schema(v) for k, v in props.items()
+            }
+    # Arrays: recurse into items (single-schema or tuple-schema form)
+    items = out.get("items")
+    if isinstance(items, dict):
+        out["items"] = _enforce_strict_schema(items)
+    elif isinstance(items, list):
+        out["items"] = [_enforce_strict_schema(i) for i in items]
+    # Compositors: recurse into oneOf/anyOf/allOf branches
+    for key in ("oneOf", "anyOf", "allOf"):
+        branches = out.get(key)
+        if isinstance(branches, list):
+            out[key] = [_enforce_strict_schema(b) for b in branches]
     return out
 
 

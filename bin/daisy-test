@@ -13,7 +13,7 @@ set -e
 DAISY_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 VENDOR_LIB="$DAISY_ROOT/vendor/lib"
 
-PYTHON="${DAISY_PYTHON:-python3::3.9.9}"
+PYTHON="${DAISY_PYTHON:-python3}"
 
 # Check that vendored libs have been unpacked
 if [ ! -d "$VENDOR_LIB" ] || [ -z "$(ls "$VENDOR_LIB"/ 2>/dev/null)" ]; then

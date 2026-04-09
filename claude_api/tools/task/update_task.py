@@ -7,6 +7,7 @@ DESCRIPTION = (
 )
 INPUT_SCHEMA = {
     "type": "object",
+    "additionalProperties": False,
     "properties": {
         "task_id": {
             "type": "string",
@@ -27,6 +28,7 @@ INPUT_SCHEMA = {
         },
         "add_subtask": {
             "type": "object",
+            "additionalProperties": False,
             "properties": {
                 "name": {"type": "string"},
                 "status": {"type": "string", "enum": ["pending", "active", "done", "skipped"]},
@@ -37,6 +39,7 @@ INPUT_SCHEMA = {
         },
         "update_subtask": {
             "type": "object",
+            "additionalProperties": False,
             "properties": {
                 "index": {"type": "integer", "description": "0-based subtask index"},
                 "status": {"type": "string", "enum": ["pending", "active", "done", "skipped"]},

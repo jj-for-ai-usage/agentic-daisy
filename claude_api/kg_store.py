@@ -299,34 +299,39 @@ class KGStore:
             "results": results,
         })
 
-    def timeline(self, entity: str = "") -> str:
+    def timeline(self, entity: str = "", as_of: str = "") -> str:
         """Return up to 100 facts in chronological order.
 
         If *entity* is given, only facts touching that entity are returned.
+        If *as_of* (ISO date) is given, only facts that were established on
+        or before that date are returned -- the timeline as it would have
+        looked at that point. Uses ``COALESCE(valid_from, extracted_at)`` so
+        records without an explicit ``valid_from`` still get filtered by
+        their extraction timestamp.
         """
         conn = self._conn()
         try:
+            base_select = (
+                "SELECT t.predicate, s.name, o.name, t.valid_from, t.valid_to "
+                "  FROM triples t "
+                "  JOIN entities s ON t.subject = s.id "
+                "  JOIN entities o ON t.object = o.id "
+            )
+            clauses: List[str] = []
+            params: List[Any] = []
             if entity:
                 eid = self._entity_id(entity)
-                rows = conn.execute(
-                    """SELECT t.predicate, s.name, o.name, t.valid_from, t.valid_to
-                         FROM triples t
-                         JOIN entities s ON t.subject = s.id
-                         JOIN entities o ON t.object = o.id
-                        WHERE t.subject = ? OR t.object = ?
-                        ORDER BY COALESCE(t.valid_from, t.extracted_at) ASC
-                        LIMIT 100""",
-                    (eid, eid),
-                ).fetchall()
-            else:
-                rows = conn.execute(
-                    """SELECT t.predicate, s.name, o.name, t.valid_from, t.valid_to
-                         FROM triples t
-                         JOIN entities s ON t.subject = s.id
-                         JOIN entities o ON t.object = o.id
-                        ORDER BY COALESCE(t.valid_from, t.extracted_at) ASC
-                        LIMIT 100"""
-                ).fetchall()
+                clauses.append("(t.subject = ? OR t.object = ?)")
+                params.extend([eid, eid])
+            if as_of:
+                clauses.append("COALESCE(t.valid_from, t.extracted_at) <= ?")
+                params.append(as_of)
+            sql = base_select
+            if clauses:
+                sql += " WHERE " + " AND ".join(clauses)
+            sql += (" ORDER BY COALESCE(t.valid_from, t.extracted_at) ASC "
+                    "LIMIT 100")
+            rows = conn.execute(sql, params).fetchall()
         finally:
             conn.close()
 
@@ -343,6 +348,7 @@ class KGStore:
         ]
         return json.dumps({
             "entity": entity or None,
+            "as_of": as_of or None,
             "count": len(results),
             "results": results,
         })

@@ -13,8 +13,15 @@ import json
 import logging
 import os
 import tempfile
+from contextlib import contextmanager
 from datetime import datetime, timezone
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, Iterator, List, Optional, Tuple
+
+try:
+    import fcntl  # POSIX advisory file locking
+    _HAS_FCNTL = True
+except ImportError:  # pragma: no cover -- non-POSIX fallback
+    _HAS_FCNTL = False
 
 LOG = logging.getLogger("daisy")
 
@@ -68,25 +75,75 @@ class MemoryStore:
         self.memory_dir = memory_dir
         os.makedirs(memory_dir, mode=0o700, exist_ok=True)
         self.memory_file = os.path.join(memory_dir, "memories.json")
+        self.lock_file = os.path.join(memory_dir, ".memories.lock")
         self.drawers_dir = os.path.join(memory_dir, "drawers")
         os.makedirs(self.drawers_dir, mode=0o700, exist_ok=True)
         self._memories: List[Dict[str, Any]] = []
-        self._load()
+        with self._locked():
+            self._load()
 
     # ------------------------------------------------------------------ IO
+    @contextmanager
+    def _locked(self) -> Iterator[None]:
+        """Best-effort exclusive lock on the memory directory.
+
+        Uses fcntl.flock on a dedicated lockfile so concurrent writers
+        (two daisy sessions sharing a ``.daisy/memory/``) serialize their
+        load/save cycles. Silently degrades to no locking on platforms
+        without fcntl (Windows) or filesystems that refuse flock (some NFS).
+        """
+        if not _HAS_FCNTL:
+            yield
+            return
+        try:
+            lf = open(self.lock_file, "a+")
+        except OSError as exc:
+            LOG.debug("Lockfile open failed: %s -- proceeding unlocked", exc)
+            yield
+            return
+        try:
+            try:
+                fcntl.flock(lf.fileno(), fcntl.LOCK_EX)
+            except OSError as exc:
+                LOG.debug("flock failed: %s -- proceeding unlocked", exc)
+            yield
+        finally:
+            try:
+                fcntl.flock(lf.fileno(), fcntl.LOCK_UN)
+            except OSError:
+                pass
+            lf.close()
+
     def _load(self) -> None:
         if not os.path.exists(self.memory_file):
             self._memories = []
             return
         try:
             with open(self.memory_file, "r") as f:
-                self._memories = json.load(f)
+                raw = json.load(f)
         except (json.JSONDecodeError, ValueError) as exc:
             LOG.warning(
                 "Corrupted memory file %s: %s -- starting with empty memories",
                 self.memory_file, exc,
             )
             self._memories = []
+            return
+        # Shape check: require top-level list of dicts. Anything else is
+        # treated as corrupt and quarantined (not silently destroyed).
+        if not isinstance(raw, list) or not all(isinstance(r, dict) for r in raw):
+            LOG.warning(
+                "Memory file %s has unexpected shape (not a list of dicts) "
+                "-- starting empty; original preserved as %s.bad",
+                self.memory_file, self.memory_file,
+            )
+            try:
+                os.replace(self.memory_file, self.memory_file + ".bad")
+            except OSError:
+                pass
+            self._memories = []
+            return
+        # Every record must have a string "key"; drop any that don't.
+        self._memories = [r for r in raw if isinstance(r.get("key"), str)]
 
     def _save(self) -> None:
         # Atomic write: write to temp file, then rename (safe on POSIX)
@@ -160,14 +217,37 @@ class MemoryStore:
         except ValueError as exc:
             return json.dumps({"status": "error", "error": str(exc)})
 
+        with self._locked():
+            # Reload under lock so concurrent writers don't clobber each other.
+            self._load()
+            return self._save_memory_locked(
+                key, value, tags, wing, room, hall, source_file,
+                valid_from, valid_until, importance,
+            )
+
+    def _save_memory_locked(
+        self,
+        key: str,
+        value: str,
+        tags: List[str],
+        wing: str,
+        room: str,
+        hall: str,
+        source_file: str,
+        valid_from: str,
+        valid_until: str,
+        importance: Optional[int],
+    ) -> str:
         # Check if key already exists (update in place).
         # Convention: on update, a non-empty string overrides the prior value
         # and an empty string preserves it. This matches how tool JSON schemas
         # work -- Claude can omit a field entirely to mean "don't change".
         # There is intentionally no way to clear a namespace field back to ""
         # via an update; delete and re-create the record if you need that.
-        for mem in self._memories:
+        for i, mem in enumerate(self._memories):
             if mem["key"] == key:
+                # Snapshot the original record so we can roll back on _save failure.
+                original = dict(mem)
                 mem["value"] = value
                 mem["tags"] = tags
                 if wing:
@@ -185,7 +265,11 @@ class MemoryStore:
                 if importance is not None:
                     mem["importance"] = importance
                 mem["updated"] = self._now_iso()
-                self._save()
+                try:
+                    self._save()
+                except BaseException:
+                    self._memories[i] = original
+                    raise
                 return json.dumps({"status": "updated", "key": key})
 
         # New entry
@@ -212,7 +296,11 @@ class MemoryStore:
             record["importance"] = importance
 
         self._memories.append(record)
-        self._save()
+        try:
+            self._save()
+        except BaseException:
+            self._memories.pop()
+            raise
         return json.dumps({"status": "created", "key": key})
 
     def search_memory(
@@ -249,20 +337,27 @@ class MemoryStore:
 
     def delete_memory(self, key: str) -> str:
         """Delete a memory by key. If the record points at a drawer file,
-        the file is removed as well.
+        the file is removed as well. If the index save fails the in-memory
+        record is restored and the drawer file is left alone.
         """
-        for i, mem in enumerate(self._memories):
-            if mem["key"] == key:
-                drawer_path = mem.get("drawer_path", "")
-                self._memories.pop(i)
-                self._save()
-                if drawer_path and os.path.exists(drawer_path):
+        with self._locked():
+            self._load()
+            for i, mem in enumerate(self._memories):
+                if mem["key"] == key:
+                    drawer_path = mem.get("drawer_path", "")
+                    removed = self._memories.pop(i)
                     try:
-                        os.unlink(drawer_path)
-                    except OSError as exc:
-                        LOG.warning("Could not delete drawer file %s: %s",
-                                    drawer_path, exc)
-                return json.dumps({"status": "deleted", "key": key})
+                        self._save()
+                    except BaseException:
+                        self._memories.insert(i, removed)
+                        raise
+                    if drawer_path and os.path.exists(drawer_path):
+                        try:
+                            os.unlink(drawer_path)
+                        except OSError as exc:
+                            LOG.warning("Could not delete drawer file %s: %s",
+                                        drawer_path, exc)
+                    return json.dumps({"status": "deleted", "key": key})
         return json.dumps({"status": "not_found", "key": key})
 
     def list_memories(
@@ -383,70 +478,74 @@ class MemoryStore:
 
         content_hash = hashlib.sha256(body.encode("utf-8", errors="replace")).hexdigest()
 
-        # Duplicate detection by content hash
-        for mem in self._memories:
-            if mem.get("content_sha256") == content_hash:
-                return json.dumps({
-                    "status": "duplicate",
-                    "drawer_id": mem["key"],
-                    "path": mem.get("drawer_path", ""),
-                })
+        with self._locked():
+            # Reload under lock so two sessions can't both miss a duplicate.
+            self._load()
 
-        # Build drawer id and path
-        ts = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
-        safe_wing = wing.replace("/", "_")
-        safe_room = room.replace("/", "_")
-        drawer_id = "drawer_%s_%s_%s_%s" % (safe_wing, safe_room, ts,
-                                            content_hash[:8])
-        drawer_path = os.path.join(self.drawers_dir, drawer_id + ".txt")
+            # Duplicate detection by content hash
+            for mem in self._memories:
+                if mem.get("content_sha256") == content_hash:
+                    return json.dumps({
+                        "status": "duplicate",
+                        "drawer_id": mem["key"],
+                        "path": mem.get("drawer_path", ""),
+                    })
 
-        # Atomic write of the drawer file
-        fd, tmp_path = tempfile.mkstemp(
-            dir=self.drawers_dir, suffix=".tmp", prefix=".drawer-",
-        )
-        try:
-            with os.fdopen(fd, "w") as f:
-                f.write(body)
-            os.replace(tmp_path, drawer_path)
-        except BaseException:
+            # Build drawer id and path
+            ts = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
+            safe_wing = wing.replace("/", "_")
+            safe_room = room.replace("/", "_")
+            drawer_id = "drawer_%s_%s_%s_%s" % (safe_wing, safe_room, ts,
+                                                content_hash[:8])
+            drawer_path = os.path.join(self.drawers_dir, drawer_id + ".txt")
+
+            # Atomic write of the drawer file
+            fd, tmp_path = tempfile.mkstemp(
+                dir=self.drawers_dir, suffix=".tmp", prefix=".drawer-",
+            )
             try:
-                os.unlink(tmp_path)
-            except OSError:
-                pass
-            raise
+                with os.fdopen(fd, "w") as f:
+                    f.write(body)
+                os.replace(tmp_path, drawer_path)
+            except BaseException:
+                try:
+                    os.unlink(tmp_path)
+                except OSError:
+                    pass
+                raise
 
-        # Index pointer in memories.json
-        record: Dict[str, Any] = {
-            "key": drawer_id,
-            "value": "[drawer] %d bytes at %s" % (len(body), drawer_path),
-            "tags": ["drawer"],
-            "wing": wing,
-            "room": room,
-            "drawer_path": drawer_path,
-            "content_sha256": content_hash,
-            "added_by": added_by,
-            "created": self._now_iso(),
-            "updated": self._now_iso(),
-        }
-        if hall:
-            record["hall"] = hall
-        if source_file:
-            record["source_file"] = source_file
-        if importance is not None:
-            record["importance"] = importance
+            # Index pointer in memories.json
+            record: Dict[str, Any] = {
+                "key": drawer_id,
+                "value": "[drawer] %d bytes at %s" % (len(body), drawer_path),
+                "tags": ["drawer"],
+                "wing": wing,
+                "room": room,
+                "drawer_path": drawer_path,
+                "content_sha256": content_hash,
+                "added_by": added_by,
+                "created": self._now_iso(),
+                "updated": self._now_iso(),
+            }
+            if hall:
+                record["hall"] = hall
+            if source_file:
+                record["source_file"] = source_file
+            if importance is not None:
+                record["importance"] = importance
 
-        # Index the drawer. If the index save fails, clean up the drawer
-        # file so we don't leave an orphan on disk that no record points to.
-        self._memories.append(record)
-        try:
-            self._save()
-        except BaseException:
-            self._memories.pop()
+            # Index the drawer. If the index save fails, clean up the drawer
+            # file so we don't leave an orphan on disk that no record points to.
+            self._memories.append(record)
             try:
-                os.unlink(drawer_path)
-            except OSError:
-                pass
-            raise
+                self._save()
+            except BaseException:
+                self._memories.pop()
+                try:
+                    os.unlink(drawer_path)
+                except OSError:
+                    pass
+                raise
 
         return json.dumps({
             "status": "created",

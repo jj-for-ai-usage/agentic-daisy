@@ -19,6 +19,9 @@ if [ ! -d "$WHEELS_DIR" ] || [ -z "$(ls "$WHEELS_DIR"/*.whl 2>/dev/null)" ]; the
 fi
 
 echo "Unpacking vendored wheels into $LIB_DIR ..."
+# Clean out stale contents so wheels deleted from vendor/wheels/ do not
+# linger in vendor/lib/ (e.g. the removed rich/markdown_it/mdurl/pygments).
+rm -rf "$LIB_DIR"
 mkdir -p "$LIB_DIR"
 
 count=0
@@ -33,4 +36,4 @@ echo ""
 echo "Done. Unpacked $count wheels into $LIB_DIR"
 echo ""
 echo "Verify with:"
-echo "  PYTHONPATH=$LIB_DIR python3::3.9.9 -c \"import anthropic; print('OK')\""
+echo "  PYTHONPATH=$LIB_DIR python3 -c \"import anthropic; print('OK')\""
