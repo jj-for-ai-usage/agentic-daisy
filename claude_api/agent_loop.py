@@ -34,6 +34,11 @@ _CACHEABLE_TOOLS = frozenset({
     "directory_tree", "search_memory", "list_memories", "get_env",
     "load_skill", "list_tasks", "get_task",
     "get_batch_results",
+    # Mempalace-port reads
+    "list_wings", "list_rooms", "get_taxonomy", "get_drawer",
+    "traverse", "find_tunnels", "recall",
+    # Knowledge-graph reads
+    "kg_query", "kg_timeline", "kg_stats",
 })
 
 

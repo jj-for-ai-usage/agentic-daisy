@@ -3,7 +3,8 @@ NAME = "save_memory"
 DESCRIPTION = (
     "Save a piece of information for later retrieval. "
     "Use this to remember important context, decisions, or facts "
-    "across conversations."
+    "across conversations. Optional wing/room/hall fields let you "
+    "namespace a memory to a specific chip/block/flow-stage."
 )
 INPUT_SCHEMA = {
     "type": "object",
@@ -17,6 +18,38 @@ INPUT_SCHEMA = {
             "type": "array",
             "items": {"type": "string"},
             "description": "Optional categorization tags",
+        },
+        "wing": {
+            "type": "string",
+            "description": "Optional namespace: chip/design name (e.g. 'chipA').",
+        },
+        "room": {
+            "type": "string",
+            "description": "Optional sub-namespace: block name (e.g. 'cpu_core').",
+        },
+        "hall": {
+            "type": "string",
+            "description": (
+                "Optional category within the room. Free-form; suggested "
+                "values for EDA: timing, power, drc, floorplan, cts, "
+                "synth, constraint, workaround, facts."
+            ),
+        },
+        "source_file": {
+            "type": "string",
+            "description": "Optional path of the source this memory came from.",
+        },
+        "valid_from": {
+            "type": "string",
+            "description": "Optional ISO date when this fact starts being true.",
+        },
+        "valid_until": {
+            "type": "string",
+            "description": "Optional ISO date when this fact stops being true.",
+        },
+        "importance": {
+            "type": "integer",
+            "description": "0-100 importance score. Top-N by importance are loaded at session start.",
         },
     },
     "required": ["key", "value"],

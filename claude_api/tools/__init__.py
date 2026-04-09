@@ -24,6 +24,7 @@ def load_all_tools(config: DaisyConfig, registry: ToolRegistry) -> None:
     from claude_api.task_store import TaskStore
 
     from .memory import register as reg_memory
+    from .kg import register as reg_kg
     from .file import register as reg_file
     from .search import register as reg_search
     from .system import register as reg_system
@@ -31,6 +32,7 @@ def load_all_tools(config: DaisyConfig, registry: ToolRegistry) -> None:
     # --- Core tool categories (each isolated) ---
     for name, loader in [
         ("memory", lambda: reg_memory(config, registry)),
+        ("kg",     lambda: reg_kg(config, registry)),
         ("file",   lambda: reg_file(config, registry)),
         ("search", lambda: reg_search(config, registry)),
     ]:

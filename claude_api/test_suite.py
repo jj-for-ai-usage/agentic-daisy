@@ -494,24 +494,36 @@ def test_session_sanitize():
         shutil.rmtree(d)
 
 
-@test("Built-in tools: all 25 registered")
+@test("Built-in tools: all 39 registered")
 def test_builtin_tools():
     from claude_api.built_in_tools import create_default_registry
     from claude_api.config import DaisyConfig
     config = DaisyConfig(
-        memory_dir=tempfile.mkdtemp(), task_dir=tempfile.mkdtemp(),
-        batch_dir=tempfile.mkdtemp(),
+        memory_dir=tempfile.mkdtemp(), kg_dir=tempfile.mkdtemp(),
+        task_dir=tempfile.mkdtemp(), batch_dir=tempfile.mkdtemp(),
     )
     reg = create_default_registry(config)
     tools = reg.list_tool_summaries()
     names = {t["name"] for t in tools}
     expected = {
+        # Memory: structured key/value
         "save_memory", "search_memory", "delete_memory", "list_memories",
+        # Memory: wing/room/hall taxonomy + drawers + palace graph
+        "list_wings", "list_rooms", "get_taxonomy",
+        "add_drawer", "get_drawer",
+        "traverse", "find_tunnels", "recall",
+        # Knowledge graph
+        "kg_add", "kg_query", "kg_invalidate", "kg_timeline", "kg_stats",
+        # File
         "read_file", "write_file", "edit_file", "append_file",
         "list_directory", "search_files", "find_files", "directory_tree",
+        # System
         "get_env", "load_skill", "create_skill", "create_tool",
+        # Task
         "create_task", "update_task", "list_tasks", "get_task",
+        # Batch
         "submit_batch", "check_batch", "get_batch_results",
+        # Repair
         "repair_tools", "repair_skills",
     }
     assert names == expected, "Missing: %s  Extra: %s" % (expected - names, names - expected)

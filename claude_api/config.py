@@ -15,12 +15,14 @@ DEFAULT_MAX_TOKENS = 4096
 # DAISY_ROOT is set by the bash launchers (bin/daisy etc.)
 _PROJECT_ROOT = os.environ.get("DAISY_ROOT", os.getcwd())
 DEFAULT_MEMORY_DIR = os.path.join(_PROJECT_ROOT, ".daisy", "memory")
+DEFAULT_KG_DIR = os.path.join(_PROJECT_ROOT, ".daisy", "kg")
 DEFAULT_LOG_DIR = os.path.join(_PROJECT_ROOT, ".daisy", "logs")
 DEFAULT_SESSION_DIR = os.path.join(_PROJECT_ROOT, ".daisy", "sessions")
 DEFAULT_WORKSPACE_DIR = os.path.join(_PROJECT_ROOT, ".daisy", "workspace")
 DEFAULT_SKILLS_DIR = os.path.join(_PROJECT_ROOT, ".daisy", "skills")
 DEFAULT_TASK_DIR = os.path.join(_PROJECT_ROOT, ".daisy", "tasks")
 DEFAULT_BATCH_DIR = os.path.join(_PROJECT_ROOT, ".daisy", "batches")
+DEFAULT_IDENTITY_FILE = os.path.join(_PROJECT_ROOT, ".daisy", "identity.txt")
 
 # User-level persistent dirs (shared across projects, next to ~/.daisy/api_key)
 _USER_HOME = os.path.expanduser("~/.daisy")
@@ -68,11 +70,13 @@ class DaisyConfig:
         model: str = DEFAULT_MODEL,
         max_tokens: int = DEFAULT_MAX_TOKENS,
         memory_dir: str = DEFAULT_MEMORY_DIR,
+        kg_dir: str = DEFAULT_KG_DIR,
         log_dir: str = DEFAULT_LOG_DIR,
         workspace_dir: str = DEFAULT_WORKSPACE_DIR,
         skills_dir: str = DEFAULT_SKILLS_DIR,
         task_dir: str = DEFAULT_TASK_DIR,
         batch_dir: str = DEFAULT_BATCH_DIR,
+        identity_file: str = DEFAULT_IDENTITY_FILE,
         system_prompt: Optional[str] = None,
         debug: bool = False,
         api_key_file: str = DEFAULT_API_KEY_FILE,
@@ -93,6 +97,8 @@ class DaisyConfig:
         self.model = model
         self.max_tokens = max_tokens
         self.memory_dir = memory_dir
+        self.kg_dir = kg_dir
+        self.identity_file = identity_file
         self.log_dir = log_dir
         self.workspace_dir = workspace_dir
         self.skills_dir = skills_dir

@@ -11,6 +11,20 @@ def build_default_system_prompt(registry: ToolRegistry, config: DaisyConfig = No
     tool_lines = "\n".join(
         "- %s: %s" % (t["name"], t["description"]) for t in tools
     )
+
+    # Wake-up block: L0 identity + L1 essential story. Prepended so the
+    # agent boots with top context already in-window. ~600-900 tokens.
+    wake_up_block = ""
+    if config is not None:
+        try:
+            from .memory_stack import MemoryStack
+            mem = getattr(registry, "_memory_store", None)
+            if mem is not None:
+                stack = MemoryStack(mem, identity_path=config.identity_file)
+                wake_up_block = stack.wake_up()
+        except Exception:
+            pass  # Non-fatal: wake-up is best-effort
+
     prompt = (
         "You are Daisy, an AI assistant for EDA application engineers at "
         "Cadence Design Systems. You support customers running Genus (synthesis) "
@@ -89,12 +103,47 @@ def build_default_system_prompt(registry: ToolRegistry, config: DaisyConfig = No
         "\n"
         "**Memory** -- persistent facts that help across sessions:\n"
         "- At session start, call search_memory with the customer/project "
-        "name to recall prior context.\n"
+        "name to recall prior context (an L0/L1 wake-up block is already "
+        "prepended above, so check there first).\n"
         "- Save: project paths, tool versions, known workarounds, timing "
         "targets, constraint files, customer preferences.\n"
         "- Don't save: transient tool output, conversation summaries, "
         "one-time answers.\n"
         "- Tag every memory by customer or project name.\n"
+        "\n"
+        "**Memory namespace (wing/room/hall):**\n"
+        "- wing = chip or design name (e.g. 'chipA', 'mobile_soc_v2').\n"
+        "- room = block name (e.g. 'cpu_core', 'memctrl').\n"
+        "- hall = category within the room (e.g. 'timing', 'power', "
+        "'drc', 'floorplan', 'cts', 'synth', 'constraint', 'workaround').\n"
+        "- Always populate wing + room when the memory is design-specific. "
+        "hall is optional but preferred.\n"
+        "- Use importance (0-100) for facts that should show up in the "
+        "L0/L1 wake-up block. 80+ for project-critical facts, 50 for "
+        "useful context, 0 for trivia.\n"
+        "- save_memory is for short structured key/value notes. "
+        "add_drawer is for verbatim archival (logs, reports, large "
+        "outputs); it spills to a drawer file and indexes only a pointer.\n"
+        "- Use list_wings / list_rooms / get_taxonomy to discover what's "
+        "already namespaced. Use traverse / find_tunnels to find related "
+        "blocks across chips (shared IP, reused constraint files).\n"
+        "- recall(wing, room, hall) is the cheap L2 retrieval when you "
+        "already know the namespace you want.\n"
+        "- Use as_of on search_memory / kg_query to see a historical "
+        "snapshot (what was true at a given point in time).\n"
+        "\n"
+        "**Knowledge graph** -- durable structured facts with temporal "
+        "validity:\n"
+        "- kg_add(subject, predicate, object_) records a triple. Pass "
+        "valid_from when you know it. Idempotent: a re-add of a current "
+        "triple is a no-op.\n"
+        "- kg_invalidate closes a currently-true fact with a valid_to "
+        "date; the triple stays in the timeline.\n"
+        "- kg_query(name, direction, as_of) walks outgoing/incoming/both "
+        "relationships for an entity at a point in time.\n"
+        "- Use for things like 'constraint_set_v1 supersedes "
+        "constraint_set_v0', 'chipA uses floorplan_v3', etc.\n"
+        "- save_memory is for notes; kg_add is for relationships.\n"
         "\n"
         "**Tasks** -- multi-step work that spans sessions:\n"
         "- Active tasks are shown below (if any). Use get_task(id) for "
@@ -147,6 +196,10 @@ def build_default_system_prompt(registry: ToolRegistry, config: DaisyConfig = No
         "- When presenting QoR data, use aligned tables.\n"
         "- For errors, identify root cause first, then suggest fix." % tool_lines
     )
+
+    # Prepend the L0/L1 wake-up block so identity and top context land first.
+    if wake_up_block:
+        prompt = wake_up_block + "\n\n" + prompt
 
     # Append skill index if skills are available
     if config is not None:
