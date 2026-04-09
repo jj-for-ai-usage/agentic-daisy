@@ -20,6 +20,7 @@ def load_all_tools(config: DaisyConfig, registry: ToolRegistry) -> None:
     """
     from claude_api.config import USER_SKILLS_DIR, USER_TOOLS_DIR, DEFAULT_CUSTOM_TOOLS_DIR
     from claude_api.custom_tools import CustomToolLoader
+    from claude_api.scoreboard import ToolScoreboard
     from claude_api.skills import SkillLoader
     from claude_api.task_store import TaskStore
 
@@ -28,6 +29,13 @@ def load_all_tools(config: DaisyConfig, registry: ToolRegistry) -> None:
     from .file import register as reg_file
     from .search import register as reg_search
     from .system import register as reg_system
+
+    # --- Tool usage scoreboard (optional; best-effort) ---
+    try:
+        scoreboard = ToolScoreboard(config.log_dir)
+        registry.set_scoreboard(scoreboard)
+    except Exception as exc:
+        LOG.error("Failed to init tool scoreboard: %s", exc)
 
     # --- Core tool categories (each isolated) ---
     for name, loader in [

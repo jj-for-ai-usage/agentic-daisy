@@ -4,6 +4,7 @@ from __future__ import annotations
 import inspect
 import logging
 import signal
+import time
 from typing import Any, Callable, Dict, List, Optional
 
 LOG = logging.getLogger("daisy")
@@ -83,6 +84,16 @@ class ToolRegistry:
 
     def __init__(self) -> None:
         self._tools: Dict[str, ToolDef] = {}
+        self._scoreboard = None  # Optional ToolScoreboard; see set_scoreboard()
+
+    def set_scoreboard(self, scoreboard) -> None:
+        """Attach a ToolScoreboard. Every execute() will record stats to it.
+
+        Scoreboard is optional: if not set, execute() behaves unchanged.
+        A ToolScoreboard that raises during record() never affects the
+        return value or exception of execute().
+        """
+        self._scoreboard = scoreboard
 
     def register(
         self,
@@ -153,9 +164,22 @@ class ToolRegistry:
                 )
             old_handler = signal.signal(signal.SIGALRM, _alarm_handler)
             signal.alarm(TOOL_TIMEOUT)
+        start = time.time()
+        had_error = False
         try:
-            return tool_def.handler(**filtered)
+            result = tool_def.handler(**filtered)
+            return result
+        except BaseException:
+            had_error = True
+            raise
         finally:
             if use_alarm:
                 signal.alarm(0)
                 signal.signal(signal.SIGALRM, old_handler)
+            # Record usage (best-effort; never break tool execution)
+            if self._scoreboard is not None:
+                try:
+                    elapsed_ms = int((time.time() - start) * 1000)
+                    self._scoreboard.record(name, elapsed_ms, had_error)
+                except Exception:
+                    pass
