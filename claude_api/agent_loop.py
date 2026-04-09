@@ -222,6 +222,9 @@ def run_agent_loop(
         # the conversation when the input crosses config.compaction_threshold
         # tokens. Replaces daisy's hand-rolled ConversationCompactor. Only
         # available on the beta messages namespace, which _do_api_call uses.
+        # REQUIRES the 'context-management-2025-06-27' beta header -- without
+        # it the server rejects the context_management field with
+        # "400 Extra inputs are not permitted".
         call_kwargs["context_management"] = {
             "edits": [
                 {
@@ -233,6 +236,7 @@ def run_agent_loop(
                 },
             ],
         }
+        call_kwargs["betas"] = ["context-management-2025-06-27"]
 
         LOG.debug("Round %d: sending request to %s", round_num, config.model)
         t0 = time.time()
