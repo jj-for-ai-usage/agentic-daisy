@@ -137,6 +137,84 @@ def _rollback_to_snapshot(history: List[Dict[str, Any]], snapshot_len: int) -> N
     del history[snapshot_len:]
 
 
+def _heal_orphaned_tool_uses(history: List[Dict[str, Any]]) -> int:
+    """Walk *history* and repair any assistant(tool_use) blocks that lack a
+    matching user(tool_result) in the following message.
+
+    A healed orphan gets an injected synthetic tool_result with
+    is_error=True so the conversation pairing is valid on the next API
+    call. Returns the number of orphans healed.
+
+    Safe to call on clean history (no-op). O(n) over the full conversation.
+    Defensive recovery path for interactive sessions whose history was
+    corrupted by earlier bugs, interrupted runs, or beta stop reasons
+    (``compaction`` / ``pause_turn``) that the loop previously mishandled.
+    """
+    healed = 0
+    i = 0
+    while i < len(history):
+        msg = history[i]
+        if msg.get("role") != "assistant":
+            i += 1
+            continue
+        content = msg.get("content") or []
+        if not isinstance(content, list):
+            i += 1
+            continue
+        tool_use_ids = [
+            b["id"] for b in content
+            if isinstance(b, dict) and b.get("type") == "tool_use" and "id" in b
+        ]
+        if not tool_use_ids:
+            i += 1
+            continue
+
+        next_msg = history[i + 1] if i + 1 < len(history) else None
+        next_content = (
+            next_msg.get("content")
+            if (next_msg and next_msg.get("role") == "user")
+            else None
+        )
+
+        if isinstance(next_content, list):
+            done_ids = {
+                b["tool_use_id"] for b in next_content
+                if isinstance(b, dict) and b.get("type") == "tool_result"
+                and "tool_use_id" in b
+            }
+            missing = [tid for tid in tool_use_ids if tid not in done_ids]
+            if missing:
+                for tid in missing:
+                    next_content.append({
+                        "type": "tool_result",
+                        "tool_use_id": tid,
+                        "content": "Healed: orphaned tool_use recovered on resume.",
+                        "is_error": True,
+                    })
+                healed += len(missing)
+            i += 2
+            continue
+
+        # No matching user message at all after this assistant(tool_use):
+        # insert a synthetic one.
+        synthetic = {
+            "role": "user",
+            "content": [
+                {
+                    "type": "tool_result",
+                    "tool_use_id": tid,
+                    "content": "Healed: orphaned tool_use recovered on resume.",
+                    "is_error": True,
+                }
+                for tid in tool_use_ids
+            ],
+        }
+        history.insert(i + 1, synthetic)
+        healed += len(tool_use_ids)
+        i += 2
+    return healed
+
+
 def _make_cache_key(tool_name: str, tool_input: dict) -> str:
     """Deterministic cache key for a tool call."""
     return tool_name + ":" + json.dumps(tool_input, sort_keys=True)
@@ -185,6 +263,17 @@ def run_agent_loop(
 
     if conversation_history is None:
         conversation_history = []
+
+    # Defensive: heal any orphaned tool_use blocks inherited from a prior
+    # turn (interrupted run, past framework bug, or a compaction/pause_turn
+    # stop reason that wasn't handled in an older version of this loop).
+    # O(n) no-op on clean history.
+    orphans_healed = _heal_orphaned_tool_uses(conversation_history)
+    if orphans_healed > 0:
+        LOG.warning(
+            "Healed %d orphaned tool_use block(s) from prior conversation",
+            orphans_healed,
+        )
 
     # Snapshot before appending anything so bail-out paths can restore the
     # history to a valid pre-invocation state in one operation.
@@ -342,12 +431,32 @@ def run_agent_loop(
 
         conversation_history.append({"role": "assistant", "content": assistant_content})
 
-        # If Claude is done (no tool calls), return the final text
-        if response.stop_reason != "tool_use":
-            parts = []
-            for block in response.content:
-                if block.type == "text":
-                    parts.append(block.text)
+        # Decide what to do next based on the ACTUAL content, not stop_reason.
+        # Trusting stop_reason alone is unsafe: the beta endpoint emits eight
+        # stop reasons (end_turn, max_tokens, stop_sequence, tool_use,
+        # pause_turn, compaction, refusal, model_context_window_exceeded) and
+        # several of them can carry tool_use blocks that MUST be executed (or
+        # synthesized) to keep the history pairing valid. In particular,
+        # "compaction" fires whenever the server-side context_management edit
+        # (clear_tool_uses_20250919) triggers on long sessions, and its
+        # response body may include a partially-generated tool_use.
+        has_tool_use = any(
+            b.get("type") == "tool_use" for b in assistant_content
+        )
+
+        if not has_tool_use:
+            # "compaction" and "pause_turn" mean the server paused mid-turn
+            # and wants us to send the conversation back to continue. No
+            # tool calls to execute; just loop to the next round so the
+            # server can resume from where it stopped.
+            if response.stop_reason in ("compaction", "pause_turn"):
+                LOG.debug(
+                    "Round %d: stop_reason=%s with no tool_use; continuing",
+                    round_num, response.stop_reason,
+                )
+                continue
+            # Terminal stop reason: return the accumulated text.
+            parts = [b["text"] for b in assistant_content if b.get("type") == "text"]
             return "\n".join(parts) if parts else ""
 
         # Execute each tool call and collect results.
