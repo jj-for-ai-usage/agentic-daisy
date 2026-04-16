@@ -517,19 +517,27 @@ def test_builtin_tools():
     assert names == expected, "Missing: %s  Extra: %s" % (expected - names, names - expected)
 
 
-@test("System prompt: generated with all tools")
+@test("System prompt: core sections present, no tool-list duplication")
 def test_system_prompt():
     from claude_api.built_in_tools import create_default_registry, build_default_system_prompt
     from claude_api.config import DaisyConfig
     config = DaisyConfig(memory_dir=tempfile.mkdtemp())
     reg = create_default_registry(config)
-    prompt = build_default_system_prompt(reg)
+    prompt = build_default_system_prompt(config=config)
+    # Persona + domain still present
     assert "Daisy" in prompt
     assert "Genus" in prompt
     assert "Innovus" in prompt
-    assert "save_memory" in prompt
-    assert "search_files" in prompt
-    assert "directory_tree" in prompt
+    # Core operating-rule keywords
+    assert "cheapest data slice" in prompt.lower() or "cheapest" in prompt
+    assert "Verify" in prompt
+    # Tool list MUST NOT be duplicated in the system prompt —
+    # tools are sent via the API's tools= parameter.
+    assert "- save_memory:" not in prompt
+    assert "- search_files:" not in prompt
+    assert "- directory_tree:" not in prompt
+    # Sanity: prompt size should be well under the pre-refactor ~7.5KB
+    assert len(prompt) < 4000, "Prompt regressed in size: %d" % len(prompt)
 
 
 @test("TaskStore: create + list + get + update lifecycle")
