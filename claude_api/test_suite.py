@@ -543,7 +543,7 @@ def test_session_sanitize():
         shutil.rmtree(d)
 
 
-@test("Built-in tools: all 25 registered")
+@test("Built-in tools: all 27 registered")
 def test_builtin_tools():
     from claude_api.built_in_tools import create_default_registry
     from claude_api.config import DaisyConfig
@@ -569,6 +569,8 @@ def test_builtin_tools():
         "create_task", "update_task", "list_tasks", "get_task",
         # batch (3)
         "submit_batch", "check_batch", "get_batch_results",
+        # eda (2)
+        "scan_workspaces", "tabulate_workspaces",
     }
     assert names == expected, "Missing: %s  Extra: %s" % (expected - names, names - expected)
 
@@ -1133,6 +1135,136 @@ def test_cli_list_sessions():
     assert result.returncode == 0, "daisy --list-sessions failed: %s" % result.stderr
 
 
+# ── EDA tools (scan_workspaces, tabulate_workspaces) ──────
+
+def _make_fake_workspace_tree(root: str, layout: list):
+    """Create empty iflowblocks dirs per layout entries.
+
+    layout items look like ("trialA", "SYN", "blk") -> makes
+    <root>/trialA/SYN/blk/iflowblocks/<blk>/imp/trialA/
+    so that find_work_location() resolves to a real dir.
+    """
+    for trial, stage, block in layout:
+        ifb = os.path.join(root, trial, stage, block, "iflowblocks")
+        work = os.path.join(ifb, block, "imp", trial)
+        os.makedirs(work, exist_ok=True)
+
+
+@test("EDA: scan_workspaces on empty tree")
+def test_scan_workspaces_empty():
+    from claude_api.tools.eda.scan_workspaces import make_handler as make_scan
+    d = tempfile.mkdtemp()
+    handler = make_scan(audit=None)
+    r = json.loads(handler(search_root=d))
+    assert r["ok"] is True, r
+    assert r["counts"]["active"] == 0
+    assert r["counts"]["total"] == 0
+    for key in ("active", "syn", "pnr"):
+        p = r["rpt_files"][key]
+        assert os.path.isfile(p), "Missing rpt: %s" % p
+        with open(p) as fh:
+            assert fh.read() == "", "Expected empty %s" % p
+    shutil.rmtree(d)
+
+
+@test("EDA: scan_workspaces classifies SYN/PNR with PNR superseding")
+def test_scan_workspaces_classify():
+    from claude_api.tools.eda.scan_workspaces import make_handler as make_scan
+    d = tempfile.mkdtemp()
+    # trialA has both SYN and PNR; trialB has only SYN
+    _make_fake_workspace_tree(d, [
+        ("trialA", "SYN", "blk"),
+        ("trialA", "PNR", "blk"),
+        ("trialB", "SYN", "blk"),
+    ])
+    handler = make_scan(audit=None)
+    r = json.loads(handler(search_root=d, analyze_stages=False))
+    assert r["ok"] is True, r
+    assert r["counts"]["syn"] == 2, "syn=%d" % r["counts"]["syn"]
+    assert r["counts"]["pnr"] == 1, "pnr=%d" % r["counts"]["pnr"]
+    # active = trialA's PNR (supersedes SYN) + trialB's SYN = 2
+    assert r["counts"]["active"] == 2, "active=%d" % r["counts"]["active"]
+    with open(r["rpt_files"]["active"]) as fh:
+        active_lines = [ln.strip() for ln in fh if ln.strip()]
+    assert len(active_lines) == 2
+    assert any("/PNR/" in ln for ln in active_lines), "expected PNR path in ACTIVE"
+    assert any("trialB/SYN/" in ln for ln in active_lines), "expected trialB SYN in ACTIVE"
+    shutil.rmtree(d)
+
+
+@test("EDA: scan_workspaces analyze_stages=False skips log reads")
+def test_scan_workspaces_no_analyze():
+    from claude_api.tools.eda.scan_workspaces import make_handler as make_scan
+    d = tempfile.mkdtemp()
+    _make_fake_workspace_tree(d, [("trialX", "SYN", "blkA")])
+    handler = make_scan(audit=None)
+    r = json.loads(handler(search_root=d, analyze_stages=False))
+    assert r["ok"] is True
+    assert r["counts"]["syn"] == 1
+    assert r["counts"]["active"] == 1
+    shutil.rmtree(d)
+
+
+@test("EDA: scan_workspaces missing root returns ok=False")
+def test_scan_workspaces_missing_root():
+    from claude_api.tools.eda.scan_workspaces import make_handler as make_scan
+    handler = make_scan(audit=None)
+    r = json.loads(handler(search_root="/does/not/exist/ever"))
+    assert r["ok"] is False
+    assert "search_root" in r["error"]
+
+
+@test("EDA: tabulate_workspaces empty list writes empty file")
+def test_tabulate_workspaces_empty():
+    from claude_api.tools.eda.tabulate_workspaces import make_handler as make_tab
+    d = tempfile.mkdtemp()
+    list_file = os.path.join(d, "empty.rpt")
+    open(list_file, "w").close()
+    handler = make_tab(audit=None)
+    r = json.loads(handler(workspace_list_file=list_file))
+    assert r["ok"] is True, r
+    assert r["num_trials"] == 0
+    assert r["baseline_applied"] is False
+    assert os.path.isfile(r["output_file"])
+    shutil.rmtree(d)
+
+
+@test("EDA: tabulate_workspaces both inputs returns ok=False")
+def test_tabulate_workspaces_both_inputs():
+    from claude_api.tools.eda.tabulate_workspaces import make_handler as make_tab
+    d = tempfile.mkdtemp()
+    list_file = os.path.join(d, "a.rpt")
+    open(list_file, "w").close()
+    handler = make_tab(audit=None)
+    r = json.loads(handler(workspace_list_file=list_file, work_dirs=["/x"]))
+    assert r["ok"] is False
+    assert "Provide either" in r["error"]
+    shutil.rmtree(d)
+
+
+@test("EDA: tabulate_workspaces synthetic trial produces Title header")
+def test_tabulate_workspaces_synthetic():
+    from claude_api.tools.eda.tabulate_workspaces import make_handler as make_tab
+    d = tempfile.mkdtemp()
+    # Minimal workspace: just a directory. Tabulator emits header rows
+    # (Title, Block Name, Version) regardless of whether metrics exist.
+    work_dir = os.path.join(d, "trialZ")
+    os.makedirs(work_dir)
+    out = os.path.join(d, "tab.csv")
+    handler = make_tab(audit=None)
+    r = json.loads(handler(work_dirs=[work_dir], output_file=out))
+    assert r["ok"] is True, r
+    assert r["num_trials"] == 1
+    assert r["baseline_applied"] is False
+    assert os.path.isfile(out)
+    with open(out) as fh:
+        content = fh.read()
+    assert content.startswith("Title;"), "expected Title header row; got: %s" % content[:200]
+    assert "Block Name" in content, "missing Block Name row"
+    assert "trialZ" in content, "missing trial name in output"
+    shutil.rmtree(d)
+
+
 # ── Online Tests (API key required) ───────────────────────
 
 @test("Online: basic API call (no tools)")
@@ -1243,6 +1375,13 @@ OFFLINE_TESTS = [
     test_admin_hidden,
     test_cli_help,
     test_cli_list_sessions,
+    test_scan_workspaces_empty,
+    test_scan_workspaces_classify,
+    test_scan_workspaces_no_analyze,
+    test_scan_workspaces_missing_root,
+    test_tabulate_workspaces_empty,
+    test_tabulate_workspaces_both_inputs,
+    test_tabulate_workspaces_synthetic,
 ]
 
 QUICK_TESTS = [

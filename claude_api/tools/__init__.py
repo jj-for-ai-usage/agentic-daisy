@@ -44,6 +44,9 @@ def load_all_tools(
     # Batch tools
     from .batch import register as reg_batch
     reg_batch(config, registry, task_store=task_store, audit=audit)
+    # EDA tools (Cadence workspace scan + tabulation)
+    from .eda import register as reg_eda
+    reg_eda(config, registry, audit=audit)
     # Load custom tools from ~/.daisy/tools/ and .daisy/tools/
     CustomToolLoader([USER_TOOLS_DIR, DEFAULT_CUSTOM_TOOLS_DIR]).load_into(registry)
 
