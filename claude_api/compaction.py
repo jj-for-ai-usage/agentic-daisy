@@ -11,17 +11,24 @@ LOG = logging.getLogger("daisy")
 _KEEP_RECENT = 4  # ~2 turns (user + assistant each)
 
 _COMPACTION_PROMPT = """\
-Summarize this conversation between a user and an AI assistant (Daisy).
-Preserve ALL of the following if present:
-- Key findings and conclusions
-- File paths, directory structures, and command outputs mentioned
-- Errors encountered and how they were resolved
-- Decisions made and their rationale
-- Memory keys that were saved (save_memory calls)
-- Tool results that informed later decisions
+Summarize this conversation between a user and an AI assistant (Daisy)
+using the exact structure below. Omit any section that has no content.
 
-Be concise but complete — this summary replaces the original messages.
-Do NOT add commentary or analysis beyond what was discussed."""
+Context: <one-line summary of what the user is trying to accomplish>
+Findings: <bullet list of discovered facts, file paths, metrics>
+Actions taken: <bullet list of tools called and their outcomes>
+Open questions: <bullet list of what's still unresolved or in progress>
+Saved memory keys: <comma-separated list of memory keys saved>
+
+Rules:
+- Target length: 300-500 words total. Prefer shorter when there's less
+  content — do NOT pad.
+- Preserve exact strings verbatim for: file paths, memory keys, task IDs,
+  batch IDs, error messages, timing slack values, and numeric metrics.
+  Paraphrase explanations and commentary.
+- Do NOT add analysis, suggestions, or commentary beyond what was
+  discussed. This summary replaces the original messages and will be
+  read by the assistant to resume work — facts only."""
 
 
 class ConversationCompactor:

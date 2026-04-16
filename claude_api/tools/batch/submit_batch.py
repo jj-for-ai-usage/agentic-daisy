@@ -7,9 +7,21 @@ LOG = logging.getLogger("daisy")
 NAME = "submit_batch"
 DESCRIPTION = (
     "Submit independent Claude API requests for async processing at 50% cost. "
-    "Batch prompts have NO tool access — include all pre-extracted data in the prompt. "
-    "Preprocess with run_command/run_python first to minimize tokens. "
-    "Automatically creates/updates a task to track the batch."
+    "Use when you have multiple analyses that don't depend on each other's "
+    "results (per-block timing triage across 20 blocks, QoR comparison across "
+    "10 runs, categorizing 100 DRC violations, etc.).\n\n"
+    "WORKFLOW:\n"
+    "1. Preprocess data FIRST with run_command/run_python — batch prompts "
+    "have NO tool access, so all relevant data must be extracted into the "
+    "prompt upfront. grep/awk/python to extract just the metrics that matter.\n"
+    "2. Each request's prompt should be <2KB of preprocessed data plus the "
+    "analysis question. DO NOT put raw log files into batch prompts.\n"
+    "3. Provide a domain-specific `system` per request (e.g. 'You are a "
+    "timing-closure analyst reviewing Innovus QoR deltas.') — the generic "
+    "default is too vague for most real work.\n"
+    "4. submit_batch returns a batch_id and auto-creates/updates a task.\n"
+    "5. Tell the user results will be ready within 24 hours (usually <1h).\n"
+    "6. Next session: check_batch, then get_batch_results."
 )
 INPUT_SCHEMA = {
     "type": "object",
@@ -57,7 +69,14 @@ INPUT_SCHEMA = {
     "required": ["requests"],
 }
 
-_DEFAULT_BATCH_SYSTEM = "You are an EDA analysis assistant. Be concise and data-driven."
+_DEFAULT_BATCH_SYSTEM = (
+    "You are an EDA analysis assistant reviewing pre-extracted data from "
+    "Cadence Genus/Innovus runs. Answer the question directly using ONLY "
+    "the data in the prompt — do not speculate about values not shown. "
+    "Be concise, data-driven, and lead with the answer. For numeric "
+    "comparisons, include the exact values. For categorical findings, "
+    "cite the specific line or metric that supports the finding."
+)
 _TOKEN_WARN_THRESHOLD = 8000  # ~32KB of text
 
 

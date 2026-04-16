@@ -5,7 +5,13 @@ import os
 import subprocess
 
 NAME = "run_command"
-DESCRIPTION = "Execute a shell command on the server and return stdout, stderr, and exit code."
+DESCRIPTION = (
+    "Execute a shell command and return stdout, stderr, exit code. "
+    "Best for targeted log inspection (tail, head, grep, sed -n), "
+    "directory metadata (du, df, stat, wc), and quick filters. "
+    "For multi-line logic or complex parsing, prefer run_python. "
+    "Output truncated at 50K chars; default 30s timeout, max 300s."
+)
 INPUT_SCHEMA = {
     "type": "object",
     "properties": {

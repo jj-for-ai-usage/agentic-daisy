@@ -4,7 +4,13 @@ import json
 import os
 
 NAME = "read_file"
-DESCRIPTION = "Read the contents of a file. Returns up to 100K characters."
+DESCRIPTION = (
+    "Read a file's full contents (truncates silently above 100K chars). "
+    "Prefer run_command with tail/head/sed -n/grep when you only need a "
+    "portion of a large file — a 10-line tail is ~100 tokens vs ~25K "
+    "tokens for a 100KB read. Use read_file when you genuinely need a "
+    "small file (<5KB) and no narrower extraction is possible."
+)
 INPUT_SCHEMA = {
     "type": "object",
     "properties": {

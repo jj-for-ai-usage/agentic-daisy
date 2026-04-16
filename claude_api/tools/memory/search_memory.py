@@ -1,6 +1,11 @@
 """Tool: search_memory — find saved memories by keyword or tag."""
 NAME = "search_memory"
-DESCRIPTION = "Search saved memories by keyword (matches against keys and values) or by tag."
+DESCRIPTION = (
+    "Search saved memories by keyword (substring match on keys and values) "
+    "or by tag. Call before save_memory to avoid duplicate entries, and "
+    "when the user mentions a customer/project/block name to recall prior "
+    "context tagged that way."
+)
 INPUT_SCHEMA = {
     "type": "object",
     "properties": {
