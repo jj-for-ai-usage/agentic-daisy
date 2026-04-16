@@ -6,7 +6,9 @@ import re
 NAME = "repair_tools"
 DESCRIPTION = (
     "Scan custom tool directories and diagnose/fix problems with .py tool files. "
-    "Default: dry-run report. Set fix=true to apply safe auto-fixes."
+    "Default: dry-run report. Set fix=true to apply safe auto-fixes. "
+    "delete_unfixable=true MOVES unfixable files to a .quarantine/ subdir "
+    "rather than deleting them — recoverable if the move was a mistake."
 )
 INPUT_SCHEMA = {
     "type": "object",
@@ -17,7 +19,7 @@ INPUT_SCHEMA = {
         },
         "delete_unfixable": {
             "type": "boolean",
-            "description": "Delete tools that cannot be auto-fixed (requires fix=true)",
+            "description": "Move tools that cannot be auto-fixed to .quarantine/ (requires fix=true)",
         },
     },
 }
@@ -33,6 +35,18 @@ def _add_type_to_schema(source):
         source,
         count=1,
     )
+
+
+def _quarantine(path):
+    """Move a broken tool file into <dir>/.quarantine/<filename>.<ts>."""
+    import time
+    parent = os.path.dirname(path)
+    qdir = os.path.join(parent, ".quarantine")
+    os.makedirs(qdir, mode=0o700, exist_ok=True)
+    ts = time.strftime("%Y%m%d_%H%M%S")
+    target = os.path.join(qdir, "%s.%s" % (os.path.basename(path), ts))
+    os.rename(path, target)
+    return target
 
 
 def make_handler(config=None, registry=None, **kwargs):
@@ -65,16 +79,16 @@ def make_handler(config=None, registry=None, **kwargs):
                     entry["issues"].append("SyntaxError: %s" % exc)
                     entry["status"] = "unfixable"
                     if fix and delete_unfixable:
-                        os.remove(path)
-                        entry["status"] = "deleted"
+                        entry["quarantined_to"] = _quarantine(path)
+                        entry["status"] = "quarantined"
                     results.append(entry)
                     continue
                 except Exception as exc:
                     entry["issues"].append("ImportError: %s" % exc)
                     entry["status"] = "unfixable"
                     if fix and delete_unfixable:
-                        os.remove(path)
-                        entry["status"] = "deleted"
+                        entry["quarantined_to"] = _quarantine(path)
+                        entry["status"] = "quarantined"
                     results.append(entry)
                     continue
 
@@ -140,26 +154,26 @@ def make_handler(config=None, registry=None, **kwargs):
                 ):
                     entry["status"] = "needs_manual_fix"
 
-                # Delete unfixable if requested
+                # Move unfixable to quarantine if requested
                 if (
                     fix and delete_unfixable
                     and entry["status"] == "unfixable"
                     and os.path.exists(path)
                 ):
-                    os.remove(path)
-                    entry["status"] = "deleted"
+                    entry["quarantined_to"] = _quarantine(path)
+                    entry["status"] = "quarantined"
 
                 results.append(entry)
 
         summary = {
             "total_scanned": len(results),
-            "ok": sum(1 for r in results if r["status"] == "ok"),
+            "ok_count": sum(1 for r in results if r["status"] == "ok"),
             "fixed": sum(1 for r in results if "fixed" in r["status"]),
             "needs_manual_fix": sum(
                 1 for r in results
                 if r["status"] in ("unfixable", "needs_manual_fix")
             ),
-            "deleted": sum(1 for r in results if r["status"] == "deleted"),
+            "quarantined": sum(1 for r in results if r["status"] == "quarantined"),
             "mode": "fix" if fix else "dry_run",
         }
         return json.dumps({"summary": summary, "tools": results})

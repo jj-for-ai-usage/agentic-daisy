@@ -6,6 +6,10 @@ from . import search_files, find_files, directory_tree, list_directory
 ALL_TOOLS = [search_files, find_files, directory_tree, list_directory]
 
 
-def register(config, registry, **kwargs):
+def register(config, registry, audit=None, **kwargs):
     for mod in ALL_TOOLS:
-        registry.register(mod.NAME, mod.DESCRIPTION, mod.INPUT_SCHEMA, mod.handler)
+        if hasattr(mod, "make_handler"):
+            h = mod.make_handler(audit=audit, config=config)
+        else:
+            h = mod.handler
+        registry.register(mod.NAME, mod.DESCRIPTION, mod.INPUT_SCHEMA, h)

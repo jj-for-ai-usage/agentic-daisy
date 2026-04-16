@@ -82,11 +82,15 @@ class SkillLoader:
             lines.append("- **%s**: %s" % (name, info["summary"]))
         return "\n".join(lines) + "\n"
 
+    # Skills above this size are truncated with a note pointing at the file.
+    _MAX_SKILL_BODY = 20_000
+
     def load_skill(self, name: str) -> str:
         """Load the full content of a named skill. Tool handler."""
         if name not in self._index:
             available = ", ".join(sorted(self._index.keys())) or "none"
             return json.dumps({
+                "ok": False,
                 "error": "Skill '%s' not found. Available: %s" % (name, available),
             })
         path = self._index[name]["file"]
@@ -98,6 +102,18 @@ class SkillLoader:
                 parts = content.split("---", 2)
                 if len(parts) >= 3:
                     content = parts[2].strip()
-            return json.dumps({"name": name, "content": content})
+            truncated = False
+            if len(content) > self._MAX_SKILL_BODY:
+                truncated = True
+                content = (
+                    content[:self._MAX_SKILL_BODY]
+                    + "\n\n[...truncated at %d chars. "
+                    "Read the full skill with read_file('%s') if needed.]"
+                    % (self._MAX_SKILL_BODY, path)
+                )
+            return json.dumps({
+                "ok": True, "name": name, "content": content,
+                "truncated": truncated, "path": path,
+            })
         except Exception as exc:
-            return json.dumps({"error": str(exc), "name": name})
+            return json.dumps({"ok": False, "error": str(exc), "name": name})

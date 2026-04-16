@@ -43,11 +43,25 @@ INPUT_SCHEMA = {
 }
 
 
-def make_handler(config=None, registry=None, **kwargs):
+def make_handler(config=None, registry=None, admin=False, **kwargs):
     from claude_api.config import USER_TOOLS_DIR, DEFAULT_CUSTOM_TOOLS_DIR
     from claude_api.custom_tools import CustomToolLoader
 
     def _handler(name, description, input_schema, handler_code, location="user"):
+        # Gate: create_tool writes a .py file that is auto-imported and runs
+        # on every subsequent daisy startup. That's a persistence primitive,
+        # so require explicit opt-in via the --admin flag.
+        if not admin:
+            return json.dumps({
+                "ok": False,
+                "error": (
+                    "create_tool requires --admin mode because it writes "
+                    "a Python file that runs automatically on every "
+                    "subsequent daisy startup. Re-launch with --admin to "
+                    "enable this, or create the tool file manually under "
+                    "~/.daisy/tools/ and run repair_tools(fix=true)."
+                ),
+            })
         # Sanitize name
         safe_name = re.sub(r"[^a-z0-9_]", "_", name.lower())
         # Ensure input_schema has required "type" field for Anthropic API

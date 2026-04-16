@@ -80,7 +80,7 @@ _DEFAULT_BATCH_SYSTEM = (
 _TOKEN_WARN_THRESHOLD = 8000  # ~32KB of text
 
 
-def make_handler(batch_store=None, task_store=None, config=None, **kwargs):
+def make_handler(batch_store=None, task_store=None, config=None, audit=None, **kwargs):
     import anthropic
 
     def _handler(requests, task_id=None, task_name=None, model=None):
@@ -160,6 +160,13 @@ def make_handler(batch_store=None, task_store=None, config=None, **kwargs):
             notes="Batch submitted: %d requests, model: %s, batch API ID: %s"
                   % (len(requests), model, batch.id),
         )
+
+        # Audit log (feeds into session budget tracking)
+        if audit is not None:
+            audit.log_batch_submit(
+                batch_id=batch_id, request_count=len(requests),
+                model=model, estimated_tokens=total_est_tokens,
+            )
 
         result = {
             "status": "submitted",

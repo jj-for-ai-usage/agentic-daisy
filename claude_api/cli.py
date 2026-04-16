@@ -129,7 +129,7 @@ def main() -> None:
         if args.no_tools:
             registry = ToolRegistry()
         else:
-            registry = create_default_registry(config)
+            registry = create_default_registry(config, audit=audit, admin=args.admin)
             if not args.no_shell:
                 from .tools import load_execution_tools
                 load_execution_tools(

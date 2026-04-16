@@ -71,9 +71,11 @@ def test_imports():
     from claude_api.built_in_tools import create_default_registry, build_default_system_prompt
     from claude_api.agent_loop import run_agent_loop, _call_api_with_retry
     from claude_api.tools.file.read_file import handler as _rf
-    from claude_api.tools.file.write_file import handler as _wf
+    from claude_api.tools.file.write_file import make_handler as _wf
     from claude_api.tools.file.edit_file import handler as _ef
-    from claude_api.tools.file.append_file import handler as _af
+    from claude_api.tools.file.append_file import make_handler as _af
+    from claude_api.tools.file.stat_file import handler as _stf
+    from claude_api.tools.file.delete_file import make_handler as _df
     from claude_api.tools.search.search_files import handler as _sf
     from claude_api.tools.search.find_files import handler as _ff
     from claude_api.tools.search.directory_tree import handler as _dt
@@ -255,20 +257,24 @@ def test_audit_permissions():
 @test("File tools: read + write + list")
 def test_file_tools():
     from claude_api.tools.file.read_file import handler as read_file
-    from claude_api.tools.file.write_file import handler as write_file
+    from claude_api.tools.file.write_file import make_handler as _wf_factory
     from claude_api.tools.search.list_directory import handler as list_directory
+    write_file = _wf_factory(audit=None)
     d = tempfile.mkdtemp()
     try:
         # Write
         r = json.loads(write_file(os.path.join(d, "test.txt"), "hello world"))
-        assert r["status"] == "written"
+        assert r["ok"] is True
+        assert r["status"] in ("created", "overwrote")
         assert r["bytes"] == 11
         # Read
         r = json.loads(read_file(os.path.join(d, "test.txt")))
+        assert r["ok"] is True
         assert r["content"] == "hello world"
         assert r["truncated"] is False
         # List
         r = json.loads(list_directory(d))
+        assert r["ok"] is True
         assert r["count"] == 1
         assert r["entries"][0]["name"] == "test.txt"
     finally:
@@ -494,7 +500,7 @@ def test_session_sanitize():
         shutil.rmtree(d)
 
 
-@test("Built-in tools: all 25 registered")
+@test("Built-in tools: all 27 registered")
 def test_builtin_tools():
     from claude_api.built_in_tools import create_default_registry
     from claude_api.config import DaisyConfig
@@ -508,6 +514,7 @@ def test_builtin_tools():
     expected = {
         "save_memory", "search_memory", "delete_memory", "list_memories",
         "read_file", "write_file", "edit_file", "append_file",
+        "stat_file", "delete_file",
         "list_directory", "search_files", "find_files", "directory_tree",
         "get_env", "load_skill", "create_skill", "create_tool",
         "create_task", "update_task", "list_tasks", "get_task",

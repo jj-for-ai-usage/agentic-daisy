@@ -20,7 +20,7 @@ INPUT_SCHEMA = {
 }
 
 
-def make_handler(batch_store=None, task_store=None, config=None, **kwargs):
+def make_handler(batch_store=None, task_store=None, config=None, audit=None, **kwargs):
     import anthropic
 
     def _handler(batch_id=None):
@@ -37,20 +37,44 @@ def make_handler(batch_store=None, task_store=None, config=None, **kwargs):
             if not batches_to_check:
                 return json.dumps({"status": "no_pending_batches", "batches": []})
 
+        # Parallelize the retrieve() calls across pending batches — each is a
+        # round-trip to the API and they're independent.
+        from concurrent.futures import ThreadPoolExecutor, as_completed
+        api_batches: dict = {}
+        retrieve_errors: dict = {}
+        if len(batches_to_check) == 1:
+            # Skip the pool overhead for the common single-batch case.
+            b = batches_to_check[0]
+            try:
+                api_batches[b["id"]] = client.messages.batches.retrieve(b["batch_api_id"])
+            except Exception as exc:
+                retrieve_errors[b["id"]] = str(exc)
+        else:
+            with ThreadPoolExecutor(max_workers=min(8, len(batches_to_check))) as ex:
+                futs = {
+                    ex.submit(client.messages.batches.retrieve, b["batch_api_id"]): b["id"]
+                    for b in batches_to_check
+                }
+                for fut in as_completed(futs):
+                    bid = futs[fut]
+                    try:
+                        api_batches[bid] = fut.result()
+                    except Exception as exc:
+                        retrieve_errors[bid] = str(exc)
+
         results = []
         for batch in batches_to_check:
             bid = batch["id"]
             api_id = batch["batch_api_id"]
 
-            try:
-                api_batch = client.messages.batches.retrieve(api_id)
-            except Exception as exc:
+            if bid in retrieve_errors:
                 results.append({
                     "batch_id": bid,
                     "status": "error",
-                    "error": "Failed to retrieve: %s" % exc,
+                    "error": "Failed to retrieve: %s" % retrieve_errors[bid],
                 })
                 continue
+            api_batch = api_batches[bid]
 
             # Update request counts
             counts = None
@@ -118,6 +142,14 @@ def make_handler(batch_store=None, task_store=None, config=None, **kwargs):
                     continue
 
                 batch_store.update_batch(bid, **batch_update)
+
+                # Audit log (folds batch tokens into session budget totals)
+                if audit is not None:
+                    audit.log_batch_complete(
+                        batch_id=bid, model=batch.get("model", ""),
+                        input_tokens=total_in, output_tokens=total_out,
+                        succeeded=succeeded, errored=errored,
+                    )
 
                 # Update linked task
                 if batch.get("task_id"):

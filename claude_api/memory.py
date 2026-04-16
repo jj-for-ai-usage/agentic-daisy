@@ -72,7 +72,7 @@ class MemoryStore:
                 mem["tags"] = tags
                 mem["updated"] = self._now_iso()
                 self._save()
-                return json.dumps({"status": "updated", "key": key})
+                return json.dumps({"ok": True, "status": "updated", "key": key})
 
         # New entry
         self._memories.append({
@@ -83,7 +83,7 @@ class MemoryStore:
             "updated": self._now_iso(),
         })
         self._save()
-        return json.dumps({"status": "created", "key": key})
+        return json.dumps({"ok": True, "status": "created", "key": key})
 
     def search_memory(
         self,
@@ -104,8 +104,11 @@ class MemoryStore:
             results.append(mem)
 
         if not results:
-            return json.dumps({"matches": 0, "results": []})
-        return json.dumps({"matches": len(results), "results": results}, default=str)
+            return json.dumps({"ok": True, "matches": 0, "results": []})
+        return json.dumps(
+            {"ok": True, "matches": len(results), "results": results},
+            default=str,
+        )
 
     def delete_memory(self, key: str) -> str:
         """Delete a memory by key. Returns confirmation or not-found."""
@@ -113,8 +116,8 @@ class MemoryStore:
             if mem["key"] == key:
                 self._memories.pop(i)
                 self._save()
-                return json.dumps({"status": "deleted", "key": key})
-        return json.dumps({"status": "not_found", "key": key})
+                return json.dumps({"ok": True, "status": "deleted", "key": key})
+        return json.dumps({"ok": False, "status": "not_found", "key": key})
 
     def list_memories(self) -> str:
         """List all memory keys with tags and timestamps."""
@@ -125,4 +128,4 @@ class MemoryStore:
                 "tags": mem.get("tags", []),
                 "updated": mem.get("updated", mem.get("created", "")),
             })
-        return json.dumps({"total": len(summary), "memories": summary})
+        return json.dumps({"ok": True, "total": len(summary), "memories": summary})

@@ -34,6 +34,9 @@ def handler(pattern: str, path: str = ".", include: str = "", context_lines: int
 
     results = []  # type: List[dict]
     files_searched = 0
+    skipped_too_large: List[str] = []
+    skipped_unreadable: List[str] = []
+    MAX_SKIPPED_REPORTED = 20
 
     try:
         for dirpath, dirnames, filenames in os.walk(path):
@@ -47,13 +50,19 @@ def handler(pattern: str, path: str = ".", include: str = "", context_lines: int
                 fpath = os.path.join(dirpath, fname)
                 try:
                     if os.path.getsize(fpath) > 1_000_000:
+                        if len(skipped_too_large) < MAX_SKIPPED_REPORTED:
+                            skipped_too_large.append(fpath)
                         continue
                 except OSError:
+                    if len(skipped_unreadable) < MAX_SKIPPED_REPORTED:
+                        skipped_unreadable.append(fpath)
                     continue
                 try:
                     with open(fpath, "r", errors="ignore") as f:
                         file_lines = f.readlines()
                 except (OSError, UnicodeDecodeError):
+                    if len(skipped_unreadable) < MAX_SKIPPED_REPORTED:
+                        skipped_unreadable.append(fpath)
                     continue
                 files_searched += 1
                 for i, line in enumerate(file_lines):
@@ -65,11 +74,21 @@ def handler(pattern: str, path: str = ".", include: str = "", context_lines: int
                             match["context"] = [ln.rstrip("\n") for ln in file_lines[start:end]]
                         results.append(match)
                         if len(results) >= MAX_SEARCH_RESULTS:
-                            return json.dumps({"pattern": pattern, "matches": len(results),
-                                               "truncated": True, "files_searched": files_searched,
-                                               "results": results})
+                            return json.dumps({
+                                "ok": True, "pattern": pattern,
+                                "matches": len(results), "truncated": True,
+                                "files_searched": files_searched,
+                                "skipped_too_large_over_1MB": skipped_too_large,
+                                "skipped_unreadable": skipped_unreadable,
+                                "results": results,
+                            })
 
-        return json.dumps({"pattern": pattern, "matches": len(results), "truncated": False,
-                           "files_searched": files_searched, "results": results})
+        return json.dumps({
+            "ok": True, "pattern": pattern, "matches": len(results),
+            "truncated": False, "files_searched": files_searched,
+            "skipped_too_large_over_1MB": skipped_too_large,
+            "skipped_unreadable": skipped_unreadable,
+            "results": results,
+        })
     except Exception as exc:
-        return json.dumps({"error": str(exc), "pattern": pattern, "path": path})
+        return json.dumps({"ok": False, "error": str(exc), "pattern": pattern, "path": path})

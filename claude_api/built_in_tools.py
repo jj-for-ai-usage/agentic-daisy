@@ -143,9 +143,11 @@ def build_default_system_prompt(registry: ToolRegistry = None, config: DaisyConf
     return prompt
 
 
-def create_default_registry(config: DaisyConfig) -> ToolRegistry:
+def create_default_registry(
+    config: DaisyConfig, audit=None, admin: bool = False,
+) -> ToolRegistry:
     """Create a ToolRegistry pre-loaded with all built-in tools."""
     from .tools import load_all_tools
     registry = ToolRegistry()
-    load_all_tools(config, registry)
+    load_all_tools(config, registry, audit=audit, admin=admin)
     return registry

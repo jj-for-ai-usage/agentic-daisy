@@ -29,4 +29,5 @@ def handler() -> str:
         info["disk_used_pct"] = round((usage.used / usage.total) * 100, 1)
     except OSError:
         pass
+    info["ok"] = True
     return json.dumps(info)

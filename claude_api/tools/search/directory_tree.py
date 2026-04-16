@@ -4,7 +4,12 @@ import json
 import os
 
 NAME = "directory_tree"
-DESCRIPTION = "Show a recursive directory tree with depth limit. Good for understanding project structure."
+DESCRIPTION = (
+    "Show a recursive directory tree with a depth limit. Good when Claude "
+    "needs to understand overall project structure in one call. Skips "
+    "hidden dirs, __pycache__/, node_modules/. Capped at 2000 entries and "
+    "max depth 5. For a quick one-line listing, run_command('ls') is cheaper."
+)
 INPUT_SCHEMA = {
     "type": "object",
     "properties": {
@@ -51,10 +56,12 @@ def handler(path: str = ".", max_depth: int = 3) -> str:
     try:
         tree = _walk(path, 1)
         result = {
+            "ok": True,
             "path": path,
             "max_depth": max_depth,
             "entries": entry_count[0],
             "tree": tree,
+            "truncated": False,
         }
         if entry_count[0] >= MAX_ENTRIES:
             result["truncated"] = True
@@ -64,4 +71,4 @@ def handler(path: str = ".", max_depth: int = 3) -> str:
             )
         return json.dumps(result)
     except Exception as exc:
-        return json.dumps({"error": str(exc), "path": path})
+        return json.dumps({"ok": False, "error": str(exc), "path": path})
