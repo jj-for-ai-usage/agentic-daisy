@@ -1,9 +1,9 @@
-"""Search and navigation tools — search_files, find_files, directory_tree, list_directory."""
+"""Search and navigation tools — search_files, directory_tree, list_directory, list_recent_files."""
 from __future__ import annotations
 
-from . import search_files, find_files, directory_tree, list_directory
+from . import search_files, directory_tree, list_directory, list_recent_files
 
-ALL_TOOLS = [search_files, find_files, directory_tree, list_directory]
+ALL_TOOLS = [search_files, directory_tree, list_directory, list_recent_files]
 
 
 def register(config, registry, audit=None, **kwargs):

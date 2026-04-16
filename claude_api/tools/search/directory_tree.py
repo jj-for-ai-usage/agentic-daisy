@@ -5,10 +5,13 @@ import os
 
 NAME = "directory_tree"
 DESCRIPTION = (
-    "Show a recursive directory tree with a depth limit. Good when Claude "
-    "needs to understand overall project structure in one call. Skips "
-    "hidden dirs, __pycache__/, node_modules/. Capped at 2000 entries and "
-    "max depth 5. For a quick one-line listing, run_command('ls') is cheaper."
+    "Recursive directory tree with a depth limit, useful ONCE at the start "
+    "of an exploration to understand overall project layout. Skips hidden "
+    "dirs, __pycache__/, node_modules/. Capped at 2000 entries, max depth 5. "
+    "For a single directory's contents use list_directory; for recently-"
+    "modified files use list_recent_files; for a quick human-readable "
+    "listing run_command('ls') is cheaper. Do NOT re-run this tool every "
+    "turn — call it once per new project area."
 )
 INPUT_SCHEMA = {
     "type": "object",
@@ -66,8 +69,8 @@ def handler(path: str = ".", max_depth: int = 3) -> str:
         if entry_count[0] >= MAX_ENTRIES:
             result["truncated"] = True
             result["message"] = (
-                "Tree capped at %d entries. Use find_files or "
-                "run_command('find ...') for deeper exploration." % MAX_ENTRIES
+                "Tree capped at %d entries. Use run_command('find ...') "
+                "or list_recent_files for deeper exploration." % MAX_ENTRIES
             )
         return json.dumps(result)
     except Exception as exc:

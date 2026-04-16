@@ -2,9 +2,13 @@
 
 NAME = "list_tasks"
 DESCRIPTION = (
-    "List all tasks, optionally filtered by status or tag. "
-    "Returns summaries (use get_task for full detail). "
-    "Call with status='active' at session start to check for ongoing work."
+    "List tasks with optional status/tag filters. Returns summaries only "
+    "(id, name, priority, subtask count, updated-at). For full detail "
+    "including subtasks + notes + context, follow up with get_task. "
+    "Note: active tasks are ALREADY injected into the system prompt at "
+    "session start — only call this tool when you need tasks outside the "
+    "'active' status (e.g. list_tasks(status='blocked') to find what's "
+    "waiting on batch results) or a tag-filtered view."
 )
 INPUT_SCHEMA = {
     "type": "object",

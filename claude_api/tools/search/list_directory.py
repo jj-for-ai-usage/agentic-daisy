@@ -5,10 +5,12 @@ import os
 
 NAME = "list_directory"
 DESCRIPTION = (
-    "List directory contents with file types, sizes, and mtimes. Returns "
-    "structured JSON (useful when Claude will iterate on the results). "
-    "For a quick human-readable listing, `run_command('ls -la')` is cheaper. "
-    "Capped at 500 entries, sorted by name."
+    "List a single directory's contents with file types, sizes, and mtimes, "
+    "as structured JSON. Use when the next step needs to filter/iterate on "
+    "the entries programmatically (e.g. 'for each .log file, check mtime'). "
+    "For a one-shot human-readable listing, `run_command('ls -la')` is cheaper. "
+    "Capped at 500 entries, sorted by name. Does NOT recurse — use "
+    "directory_tree or list_recent_files for multi-level scans."
 )
 INPUT_SCHEMA = {
     "type": "object",

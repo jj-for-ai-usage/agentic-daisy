@@ -37,10 +37,23 @@ INPUT_SCHEMA = {
 }
 
 
-def make_handler(config=None, skill_loader=None, **kwargs):
+def make_handler(config=None, skill_loader=None, admin=False, **kwargs):
     from claude_api.config import USER_SKILLS_DIR
 
     def _handler(name, summary, content, trigger="", location="user"):
+        # Gate: a new skill shows up in every subsequent session's system
+        # prompt (via the auto-generated skill index). Require --admin so
+        # a prompt-injected Claude can't seed persistent guidance.
+        if not admin:
+            return json.dumps({
+                "ok": False,
+                "error": (
+                    "create_skill requires --admin mode because the new "
+                    "skill is auto-indexed into every subsequent session's "
+                    "system prompt. Re-launch with --admin to enable this, "
+                    "or create the .md file manually under ~/.daisy/skills/."
+                ),
+            })
         # Sanitize name
         safe_name = re.sub(r"[^a-z0-9_]", "_", name.lower())
         # Resolve target directory
@@ -67,6 +80,7 @@ def make_handler(config=None, skill_loader=None, **kwargs):
         if skill_loader is not None:
             skill_loader.refresh()
         return json.dumps({
+            "ok": True,
             "status": "created",
             "name": safe_name,
             "path": path,

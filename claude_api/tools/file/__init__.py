@@ -1,12 +1,12 @@
-"""File I/O tools — read, write, edit, append, stat, delete."""
+"""File I/O tools — read, write, edit, append, stat, diff."""
 from __future__ import annotations
 
 from . import (
-    read_file, write_file, edit_file, append_file, stat_file, delete_file,
+    read_file, write_file, edit_file, append_file, stat_file, diff_files,
 )
 
 ALL_TOOLS = [
-    read_file, write_file, edit_file, append_file, stat_file, delete_file,
+    read_file, write_file, edit_file, append_file, stat_file, diff_files,
 ]
 
 

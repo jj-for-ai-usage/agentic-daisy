@@ -29,8 +29,9 @@ MAX_TOOL_RESULT = 50_000
 
 # Tools whose results can be cached within a single agent loop (read-only tools)
 _CACHEABLE_TOOLS = frozenset({
-    "read_file", "search_files", "find_files", "list_directory",
-    "directory_tree", "search_memory", "list_memories", "get_env",
+    "read_file", "stat_file", "diff_files",
+    "search_files", "list_directory", "directory_tree", "list_recent_files",
+    "search_memory", "list_memories",
     "load_skill", "list_tasks", "get_task",
     "get_batch_results",
 })

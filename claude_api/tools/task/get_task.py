@@ -2,8 +2,11 @@
 
 NAME = "get_task"
 DESCRIPTION = (
-    "Get complete task detail including all subtasks, context, and notes. "
-    "Use after list_tasks to dive into a specific task."
+    "Get complete detail for one task: full context paragraph, every "
+    "subtask with its status + notes, and the running notes history. "
+    "Use when resuming a task shown in the session-start active-tasks "
+    "list (you already see id/name/priority there — this fetches the "
+    "rest). Task IDs look like 'task_20260404_001'."
 )
 INPUT_SCHEMA = {
     "type": "object",

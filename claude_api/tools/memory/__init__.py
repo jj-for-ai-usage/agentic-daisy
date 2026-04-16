@@ -1,10 +1,10 @@
-"""Memory tools — save, search, delete, list."""
+"""Memory tools — save, search, list. (Deletion is rare; done via MemoryStore directly if needed.)"""
 from __future__ import annotations
 
 from claude_api.memory import MemoryStore
-from . import save_memory, search_memory, delete_memory, list_memories
+from . import save_memory, search_memory, list_memories
 
-ALL_TOOLS = [save_memory, search_memory, delete_memory, list_memories]
+ALL_TOOLS = [save_memory, search_memory, list_memories]
 
 
 def register(config, registry, **kwargs):

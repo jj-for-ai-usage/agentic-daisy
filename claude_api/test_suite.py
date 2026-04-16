@@ -75,12 +75,11 @@ def test_imports():
     from claude_api.tools.file.edit_file import handler as _ef
     from claude_api.tools.file.append_file import make_handler as _af
     from claude_api.tools.file.stat_file import handler as _stf
-    from claude_api.tools.file.delete_file import make_handler as _df
+    from claude_api.tools.file.diff_files import handler as _dff
     from claude_api.tools.search.search_files import handler as _sf
-    from claude_api.tools.search.find_files import handler as _ff
     from claude_api.tools.search.directory_tree import handler as _dt
     from claude_api.tools.search.list_directory import handler as _ld
-    from claude_api.tools.system.get_env import handler as _ge
+    from claude_api.tools.search.list_recent_files import handler as _lrf
     from claude_api.tools.execution.run_command import make_handler as _rc
     from claude_api.tools.execution.run_python import make_handler as _rp
     from claude_api.session import SessionManager
@@ -330,11 +329,55 @@ def test_search_files_bad_regex():
     assert "error" in r
 
 
-@test("File tools: find_files (glob)")
-def test_find_files():
-    from claude_api.tools.search.find_files import handler as find_files
-    r = json.loads(find_files("*.py", os.path.dirname(__file__)))
-    assert r["count"] >= 10, "Should find at least 10 .py files, got %d" % r["count"]
+@test("Search tools: list_recent_files")
+def test_list_recent_files():
+    from claude_api.tools.search.list_recent_files import handler as list_recent
+    d = tempfile.mkdtemp()
+    try:
+        # Create a few files and make one clearly newer than the rest
+        import time as _t
+        paths = []
+        for i in range(3):
+            p = os.path.join(d, "f%d.txt" % i)
+            with open(p, "w") as f:
+                f.write("x")
+            paths.append(p)
+            _t.sleep(0.01)
+        r = json.loads(list_recent(d, limit=5))
+        assert r["ok"] is True
+        assert r["count"] == 3
+        # Newest first → last-created file leads
+        assert r["files"][0]["path"] == paths[-1]
+        # include_pattern filter works
+        r = json.loads(list_recent(d, include_pattern="f0*"))
+        assert r["count"] == 1
+    finally:
+        shutil.rmtree(d)
+
+
+@test("File tools: diff_files")
+def test_diff_files():
+    from claude_api.tools.file.diff_files import handler as diff_files
+    d = tempfile.mkdtemp()
+    try:
+        a = os.path.join(d, "a.txt")
+        b = os.path.join(d, "b.txt")
+        with open(a, "w") as f:
+            f.write("one\ntwo\nthree\n")
+        with open(b, "w") as f:
+            f.write("one\nTWO\nthree\n")
+        r = json.loads(diff_files(a, b))
+        assert r["ok"] is True
+        assert r["identical"] is False
+        assert r["lines_added"] == 1
+        assert r["lines_removed"] == 1
+        assert "TWO" in r["diff"]
+        # Identical files
+        r = json.loads(diff_files(a, a))
+        assert r["identical"] is True
+        assert r["diff"] == ""
+    finally:
+        shutil.rmtree(d)
 
 
 @test("File tools: directory_tree")
@@ -500,7 +543,7 @@ def test_session_sanitize():
         shutil.rmtree(d)
 
 
-@test("Built-in tools: all 27 registered")
+@test("Built-in tools: all 25 registered")
 def test_builtin_tools():
     from claude_api.built_in_tools import create_default_registry
     from claude_api.config import DaisyConfig
@@ -512,14 +555,20 @@ def test_builtin_tools():
     tools = reg.list_tool_summaries()
     names = {t["name"] for t in tools}
     expected = {
-        "save_memory", "search_memory", "delete_memory", "list_memories",
+        # memory (3)
+        "save_memory", "search_memory", "list_memories",
+        # file (6)
         "read_file", "write_file", "edit_file", "append_file",
-        "stat_file", "delete_file",
-        "list_directory", "search_files", "find_files", "directory_tree",
-        "get_env", "load_skill", "create_skill", "create_tool",
-        "create_task", "update_task", "list_tasks", "get_task",
-        "submit_batch", "check_batch", "get_batch_results",
+        "stat_file", "diff_files",
+        # search (4)
+        "list_directory", "search_files", "directory_tree", "list_recent_files",
+        # system (5)
+        "load_skill", "create_skill", "create_tool",
         "repair_tools", "repair_skills",
+        # task (4)
+        "create_task", "update_task", "list_tasks", "get_task",
+        # batch (3)
+        "submit_batch", "check_batch", "get_batch_results",
     }
     assert names == expected, "Missing: %s  Extra: %s" % (expected - names, names - expected)
 
@@ -978,7 +1027,9 @@ def test_tool_cache():
     # Verify cacheable set is correct
     assert "read_file" in _CACHEABLE_TOOLS
     assert "search_files" in _CACHEABLE_TOOLS
-    assert "get_env" in _CACHEABLE_TOOLS
+    assert "stat_file" in _CACHEABLE_TOOLS
+    assert "diff_files" in _CACHEABLE_TOOLS
+    assert "list_recent_files" in _CACHEABLE_TOOLS
     # Verify non-cacheable
     assert "run_command" not in _CACHEABLE_TOOLS
     assert "write_file" not in _CACHEABLE_TOOLS
@@ -1158,7 +1209,8 @@ OFFLINE_TESTS = [
     test_search_files_filter,
     test_search_files_context,
     test_search_files_bad_regex,
-    test_find_files,
+    test_list_recent_files,
+    test_diff_files,
     test_directory_tree,
     test_run_command,
     test_run_command_timeout,
