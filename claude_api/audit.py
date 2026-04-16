@@ -37,6 +37,11 @@ class AuditLogger:
         self._warned_budget = False
         self._total_input_tokens = 0
         self._total_output_tokens = 0
+        # Batch tokens are billed at 50% of per-request pricing; track separately
+        # so get_session_cost() can apply the discount and budget enforcement
+        # still covers them.
+        self._total_batch_input_tokens = 0
+        self._total_batch_output_tokens = 0
         self._log_session_start(model)
 
     # ------------------------------------------------------------------
@@ -111,19 +116,40 @@ class AuditLogger:
             "latency_s": round(latency_s, 3),
         })
 
-    # Pricing per million tokens (as of 2025 — update if model changes)
+    # Pricing per million tokens. Keep in sync with the Claude API catalog.
     _PRICING = {
-        "claude-haiku-4-5":   {"input": 0.80,  "output": 4.00},
-        "claude-sonnet-4-5":  {"input": 3.00,  "output": 15.00},
-        "claude-opus-4":      {"input": 15.00, "output": 75.00},
+        "claude-opus-4-7":    {"input": 5.00,  "output": 25.00},
+        "claude-opus-4-6":    {"input": 5.00,  "output": 25.00},
+        "claude-sonnet-4-6":  {"input": 3.00,  "output": 15.00},
+        "claude-haiku-4-5":   {"input": 1.00,  "output": 5.00},
     }
+
+    @classmethod
+    def _pricing_for(cls, model: str) -> dict:
+        """Look up pricing for a model. Falls back to family-matched rates
+        (opus/sonnet/haiku) so a newer dated alias doesn't silently undercharge.
+        """
+        if model in cls._PRICING:
+            return cls._PRICING[model]
+        m = model.lower()
+        if "opus" in m:
+            return {"input": 5.00, "output": 25.00}
+        if "haiku" in m:
+            return {"input": 1.00, "output": 5.00}
+        # Default to sonnet pricing for unknown models.
+        return {"input": 3.00, "output": 15.00}
 
     def get_session_cost(self) -> float:
         """Estimate session cost in USD based on token usage."""
-        pricing = self._PRICING.get(self._model, {"input": 3.0, "output": 15.0})
+        pricing = self._pricing_for(self._model)
         cost = (
             self._total_input_tokens * pricing["input"] / 1_000_000
             + self._total_output_tokens * pricing["output"] / 1_000_000
+        )
+        # Batch tokens billed at 50%
+        cost += (
+            self._total_batch_input_tokens * pricing["input"] * 0.5 / 1_000_000
+            + self._total_batch_output_tokens * pricing["output"] * 0.5 / 1_000_000
         )
         return cost
 
@@ -190,7 +216,10 @@ class AuditLogger:
         input_tokens: int, output_tokens: int,
         succeeded: int, errored: int,
     ) -> None:
-        pricing = self._PRICING.get(model, {"input": 3.0, "output": 15.0})
+        # Fold into session totals so check_budget() catches batch cost.
+        self._total_batch_input_tokens += input_tokens
+        self._total_batch_output_tokens += output_tokens
+        pricing = self._pricing_for(model)
         cost = (
             input_tokens * pricing["input"] * 0.5 / 1_000_000
             + output_tokens * pricing["output"] * 0.5 / 1_000_000

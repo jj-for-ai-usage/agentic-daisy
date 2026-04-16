@@ -53,8 +53,18 @@ class ConversationCompactor:
             # Not enough messages to compact
             return False
 
-        to_summarize = history[:-_KEEP_RECENT]
-        to_keep = history[-_KEEP_RECENT:]
+        # We replace the prefix with [user: summary, assistant: ack], so the
+        # first message in `to_keep` must be a user message to preserve role
+        # alternation. Grow the keep window by one if needed.
+        keep_count = _KEEP_RECENT
+        while keep_count < len(history) and history[-keep_count].get("role") != "user":
+            keep_count += 1
+        if keep_count >= len(history):
+            # Whole history is to_keep; nothing left to summarize.
+            return False
+
+        to_summarize = history[:-keep_count]
+        to_keep = history[-keep_count:]
         messages_removed = len(to_summarize)
 
         LOG.info(
@@ -63,6 +73,10 @@ class ConversationCompactor:
         )
 
         summary = self._summarize(to_summarize)
+        if summary is None:
+            # Summarization failed; keep history intact rather than destroy it.
+            LOG.warning("Compaction aborted: summarizer unavailable")
+            return False
 
         history.clear()
         history.append({
@@ -82,7 +96,7 @@ class ConversationCompactor:
             )
         return True
 
-    def _summarize(self, messages: List[Dict[str, Any]]) -> str:
+    def _summarize(self, messages: List[Dict[str, Any]]) -> Optional[str]:
         """Call Claude (cheap model) to summarize the old messages."""
         # Format messages into readable text
         parts = []
@@ -124,13 +138,14 @@ class ConversationCompactor:
                 system=_COMPACTION_PROMPT,
                 messages=[{"role": "user", "content": conversation_text}],
             )
-            return response.content[0].text
+            for block in response.content:
+                if getattr(block, "type", None) == "text":
+                    return block.text
+            LOG.warning("Compaction response had no text block — keeping history")
+            return None
         except Exception as exc:
             LOG.warning("Compaction API call failed: %s — keeping history as-is", exc)
-            # Return a minimal fallback summary
-            return "[Compaction failed: %s. Previous conversation had %d messages.]" % (
-                exc, len(parts),
-            )
+            return None
 
 
 def _truncate(text: str, max_len: int) -> str:

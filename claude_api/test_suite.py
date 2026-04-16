@@ -220,9 +220,9 @@ def test_audit():
         audit.log_api_call("claude-haiku-4-5", 1000, 500, "end_turn", 1.5, 0)
         audit.log_tool_execution("save_memory", True, 0.01, 0)
         audit.log_shell_command("ls", 0, False, 0.1)
-        # Cost check (haiku: 1000*0.80/1M + 500*4.00/1M = 0.0008 + 0.002 = 0.0028)
+        # Cost check (haiku-4-5: 1000*1.00/1M + 500*5.00/1M = 0.001 + 0.0025 = 0.0035)
         cost = audit.get_session_cost()
-        assert abs(cost - 0.0028) < 0.0001, "Cost wrong: %f" % cost
+        assert abs(cost - 0.0035) < 0.0001, "Cost wrong: %f" % cost
         summary = audit.get_session_summary()
         assert "1000 in" in summary
         assert "500 out" in summary
@@ -983,6 +983,7 @@ def test_compaction():
     # Create a mock client with a fake messages.create
     class FakeResponse:
         class content_block:
+            type = "text"
             text = "Summary: user asked about X, assistant explained Y."
         content = [content_block()]
     class FakeMessages:
@@ -1024,6 +1025,7 @@ def test_compaction_tool_blocks():
     from claude_api.compaction import ConversationCompactor
     class FakeResponse:
         class content_block:
+            type = "text"
             text = "Summary with tool results."
         content = [content_block()]
     class FakeMessages:

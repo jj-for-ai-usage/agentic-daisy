@@ -72,6 +72,13 @@ def main() -> None:
     logging.getLogger("httpx").setLevel(logging.WARNING)
     logging.getLogger("httpcore").setLevel(logging.WARNING)
 
+    if args.budget < 0:
+        print(
+            "ERROR: --budget must be >= 0 (got %s). Use 0 for unlimited."
+            % args.budget,
+            file=sys.stderr,
+        )
+        sys.exit(1)
     budget = args.budget if args.budget > 0 else None  # 0 = unlimited
     config = DaisyConfig(
         api_key=args.api_key,

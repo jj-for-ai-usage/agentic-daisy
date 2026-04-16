@@ -28,17 +28,39 @@ class SessionManager:
         return os.path.join(self.session_dir, safe_name + ".json")
 
     def load(self, name: str) -> Optional[List[Dict[str, Any]]]:
-        """Load a session's conversation history. Returns None if not found."""
+        """Load a session's conversation history. Returns None if not found
+        or if the file doesn't match the expected schema."""
         path = self._session_path(name)
         if not os.path.exists(path):
             return None
         try:
             with open(path, "r") as f:
                 data = json.load(f)
-            return data.get("history", [])
         except (json.JSONDecodeError, ValueError) as exc:
             LOG.warning("Corrupted session file %s: %s", path, exc)
             return None
+
+        history = data.get("history", [])
+        if not isinstance(history, list):
+            LOG.warning("Session %s: history is not a list — ignoring", path)
+            return None
+        for i, msg in enumerate(history):
+            if not isinstance(msg, dict):
+                LOG.warning("Session %s: message %d not a dict — ignoring", path, i)
+                return None
+            if msg.get("role") not in ("user", "assistant"):
+                LOG.warning(
+                    "Session %s: message %d has invalid role %r — ignoring",
+                    path, i, msg.get("role"),
+                )
+                return None
+            if not isinstance(msg.get("content"), (str, list)):
+                LOG.warning(
+                    "Session %s: message %d content must be str or list — ignoring",
+                    path, i,
+                )
+                return None
+        return history
 
     def save(self, name: str, history: List[Dict[str, Any]]) -> None:
         """Save conversation history to session file (atomic write)."""

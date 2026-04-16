@@ -81,8 +81,12 @@ def _call_api_with_retry(client, call_kwargs: Dict[str, Any]) -> Any:
 
 def _spill_to_file(content: str, tool_name: str, config) -> str:
     """Save oversized tool output to a workspace file, return the path."""
-    workspace = getattr(config, "workspace_dir", "/tmp")
-    os.makedirs(workspace, exist_ok=True)
+    workspace = getattr(config, "workspace_dir", None)
+    if not workspace:
+        raise RuntimeError(
+            "Cannot spill tool output: config.workspace_dir is not set"
+        )
+    os.makedirs(workspace, mode=0o700, exist_ok=True)
     ts = time.strftime("%Y%m%d_%H%M%S")
     filename = "tool_%s_%s.txt" % (tool_name, ts)
     path = os.path.join(workspace, filename)
@@ -147,9 +151,21 @@ def run_agent_loop(
             messages=conversation_history,
         )
         if sys_prompt:
-            call_kwargs["system"] = sys_prompt
+            # Wrap as a cacheable text block so the large EDA system prompt
+            # is served from cache on subsequent rounds (~90% discount).
+            call_kwargs["system"] = [{
+                "type": "text",
+                "text": sys_prompt,
+                "cache_control": {"type": "ephemeral"},
+            }]
         if registry.has_tools():
-            call_kwargs["tools"] = registry.list_api_params()
+            tool_params = registry.list_api_params()
+            # Cache the tool definitions too — they're large and don't change
+            # mid-session. Marker on the last tool caches the whole list.
+            if tool_params:
+                tool_params = [dict(t) for t in tool_params]
+                tool_params[-1]["cache_control"] = {"type": "ephemeral"}
+            call_kwargs["tools"] = tool_params
 
         LOG.debug("Round %d: sending request to %s", round_num, config.model)
         t0 = time.time()
@@ -220,23 +236,48 @@ def run_agent_loop(
                 response.usage.input_tokens,
             )
 
-        # Serialize assistant content blocks to plain dicts
+        # Serialize assistant content blocks to plain dicts. Preserve thinking
+        # blocks verbatim (signatures must round-trip unchanged) so extended
+        # thinking works if it ever gets enabled.
         assistant_content: List[Dict[str, Any]] = []
         for block in response.content:
-            if block.type == "text":
+            btype = block.type
+            if btype == "text":
                 assistant_content.append({"type": "text", "text": block.text})
-            elif block.type == "tool_use":
+            elif btype == "tool_use":
                 assistant_content.append({
                     "type": "tool_use",
                     "id": block.id,
                     "name": block.name,
                     "input": block.input,
                 })
+            elif btype == "thinking":
+                assistant_content.append({
+                    "type": "thinking",
+                    "thinking": block.thinking,
+                    "signature": getattr(block, "signature", ""),
+                })
+            elif btype == "redacted_thinking":
+                assistant_content.append({
+                    "type": "redacted_thinking",
+                    "data": block.data,
+                })
+            else:
+                LOG.debug("Unhandled content block type: %s", btype)
 
         conversation_history.append({"role": "assistant", "content": assistant_content})
 
+        stop_reason = response.stop_reason
+
+        # pause_turn: server-side tool iteration cap hit. Re-send to resume.
+        if stop_reason == "pause_turn":
+            LOG.debug("Round %d: pause_turn, resuming", round_num)
+            continue
+
         # If Claude is done (no tool calls), return the final text
-        if response.stop_reason != "tool_use":
+        if stop_reason != "tool_use":
+            if stop_reason == "refusal":
+                LOG.warning("Claude refused to respond (safety stop)")
             parts = []
             for block in response.content:
                 if block.type == "text":
@@ -305,9 +346,17 @@ def run_agent_loop(
                     LOG.warning("Tool %s failed: %s", tool_name, result_str)
                 else:
                     LOG.debug("Tool %s completed in %.3fs", tool_name, tool_elapsed)
-                    # Cache result for read-only tools
                     if tool_name in _CACHEABLE_TOOLS:
+                        # Cache read-only tool result
                         tool_cache[cache_key] = result_str
+                    elif tool_cache:
+                        # Mutating tool: invalidate cache — earlier read_file
+                        # etc. results may now be stale.
+                        LOG.debug(
+                            "Clearing tool cache after mutating tool %s",
+                            tool_name,
+                        )
+                        tool_cache.clear()
 
             tool_results.append({
                 "type": "tool_result",
