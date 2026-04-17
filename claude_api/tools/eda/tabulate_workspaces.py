@@ -1,10 +1,14 @@
 """Tool: tabulate_workspaces — extract metrics from EDA workspaces into a semicolon CSV."""
 from __future__ import annotations
 import json
+import logging
 import os
 import time
+from typing import List, Optional, Tuple
 
 from .tabulator import Tabulator
+
+LOG = logging.getLogger("daisy.eda.tabulate_workspaces")
 
 NAME = "tabulate_workspaces"
 DESCRIPTION = (
@@ -13,7 +17,8 @@ DESCRIPTION = (
     "Supply either workspace_list_file (path to an ACTIVE_workspaces.rpt-style file, "
     "one workspace path per line) OR work_dirs (inline list). "
     "Pass baseline=<workspace dir> to add PLACEOPT/CLOCKOPT/ROUTEOPT delta sections. "
-    "Writes CSV to output_file and returns counts plus a short preview."
+    "Writes CSV to output_file and returns num_trials, extraction_errors_count "
+    "(trials that failed metric extraction), preview_truncated, and a short preview."
 )
 INPUT_SCHEMA = {
     "type": "object",
@@ -44,11 +49,30 @@ INPUT_SCHEMA = {
 
 PREVIEW_LINES = 20
 MAX_PREVIEW_CHARS = 4_000
+_TRUNC_MARKER = "\n... (truncated)"
 
 
-def _load_dirs_from_file(path: str):
-    with open(path, "r") as fh:
-        return [ln.strip() for ln in fh if ln.strip()]
+def _load_dirs_from_file(path: str) -> Tuple[Optional[List[str]], Optional[str]]:
+    """Return (dirs, error_msg). error_msg is None on success."""
+    try:
+        with open(path, "r") as fh:
+            return [ln.strip() for ln in fh if ln.strip()], None
+    except OSError as exc:
+        return None, "read failed: %s: %s" % (type(exc).__name__, exc)
+
+
+def _count_extraction_errors(csv_text: str) -> int:
+    """Count trials whose Block Name row value is 'ERROR'.
+
+    The ported Tabulator marks a failed-extraction trial with block_name='ERROR'
+    (it then emits the row normally through the Excel-safe prefix, producing
+    cells like "' ERROR"). We scan only the Block Name header row.
+    """
+    for line in csv_text.splitlines():
+        if line.startswith("Block Name;"):
+            cells = line.split(";")[1:]  # skip the "Block Name" label itself
+            return sum(1 for c in cells if c.strip().lstrip("'").strip() == "ERROR")
+    return 0
 
 
 def make_handler(audit=None, **kwargs):
@@ -72,11 +96,13 @@ def make_handler(audit=None, **kwargs):
             return _audit_and_return({
                 "ok": False,
                 "error": "Provide either workspace_list_file or work_dirs, not both.",
+                "error_code": "INVALID_INPUT",
             }, success=False)
         if not workspace_list_file and not work_dirs:
             return _audit_and_return({
                 "ok": False,
                 "error": "Must provide workspace_list_file or work_dirs.",
+                "error_code": "INVALID_INPUT",
             }, success=False)
 
         source_label = ""
@@ -87,16 +113,22 @@ def make_handler(audit=None, **kwargs):
                     return _audit_and_return({
                         "ok": False,
                         "error": "workspace_list_file not found: %s" % workspace_list_file,
+                        "error_code": "FILE_NOT_FOUND",
                     }, success=False)
-                work_dirs = _load_dirs_from_file(workspace_list_file)
+                loaded, load_err = _load_dirs_from_file(workspace_list_file)
+                if load_err is not None:
+                    return _audit_and_return({
+                        "ok": False,
+                        "error": "could not read %s: %s" % (workspace_list_file, load_err),
+                        "error_code": "FILE_READ_ERROR",
+                    }, success=False)
+                work_dirs = loaded
                 source_label = workspace_list_file
                 default_out_dir = os.path.dirname(workspace_list_file)
             else:
                 source_label = "inline (%d dirs)" % len(work_dirs)
                 default_out_dir = os.path.abspath(work_dirs[0]) if work_dirs else os.getcwd()
-                if work_dirs and os.path.isdir(default_out_dir):
-                    pass
-                else:
+                if not work_dirs or not os.path.isdir(default_out_dir):
                     default_out_dir = os.getcwd()
 
             out = os.path.abspath(output_file) if output_file else os.path.join(
@@ -108,20 +140,17 @@ def make_handler(audit=None, **kwargs):
                 os.makedirs(os.path.dirname(out) or ".", exist_ok=True)
                 with open(out, "w") as fh:
                     fh.write("")
-                elapsed = time.time() - t0
-                if audit is not None:
-                    audit.log_tool_execution(
-                        tool_name=NAME, success=True, latency_s=elapsed, round_num=-1,
-                    )
-                return json.dumps({
+                return _audit_and_return({
                     "ok": True,
                     "output_file": out,
                     "source": source_label,
                     "num_trials": 0,
                     "num_rows": 0,
+                    "extraction_errors_count": 0,
                     "baseline_applied": False,
                     "preview": "",
-                })
+                    "preview_truncated": False,
+                }, success=True)
 
             csv_text = Tabulator().tabulate_to_string(
                 work_dirs, baseline_dir=baseline or None,
@@ -132,29 +161,31 @@ def make_handler(audit=None, **kwargs):
 
             lines = csv_text.splitlines()
             preview = "\n".join(lines[:PREVIEW_LINES])
+            preview_truncated = False
             if len(preview) > MAX_PREVIEW_CHARS:
-                preview = preview[:MAX_PREVIEW_CHARS] + "\n... (truncated)"
+                keep = max(0, MAX_PREVIEW_CHARS - len(_TRUNC_MARKER))
+                preview = preview[:keep] + _TRUNC_MARKER
+                preview_truncated = True
 
-            elapsed = time.time() - t0
-            if audit is not None:
-                audit.log_tool_execution(
-                    tool_name=NAME, success=True, latency_s=elapsed, round_num=-1,
-                )
-            return json.dumps({
+            extraction_errors = _count_extraction_errors(csv_text)
+
+            return _audit_and_return({
                 "ok": True,
                 "output_file": out,
                 "source": source_label,
                 "num_trials": len(work_dirs),
                 "num_rows": len(lines),
+                "extraction_errors_count": extraction_errors,
                 "baseline_applied": bool(baseline),
                 "preview": preview,
-            })
+                "preview_truncated": preview_truncated,
+            }, success=True)
         except Exception as exc:
-            elapsed = time.time() - t0
-            if audit is not None:
-                audit.log_tool_execution(
-                    tool_name=NAME, success=False, latency_s=elapsed, round_num=-1,
-                )
-            return json.dumps({"ok": False, "error": "tabulate failed: %s" % exc})
+            return _audit_and_return({
+                "ok": False,
+                "error": "tabulate failed: %s: %s" % (type(exc).__name__, exc),
+                "error_code": "UNEXPECTED_ERROR",
+                "error_type": type(exc).__name__,
+            }, success=False)
 
     return tabulate_workspaces

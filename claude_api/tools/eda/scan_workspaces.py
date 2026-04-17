@@ -1,10 +1,13 @@
 """Tool: scan_workspaces — discover active SYN/PNR EDA workspaces under a project root."""
 from __future__ import annotations
 import json
+import logging
 import os
 import time
 
 from . import workspace as _ws
+
+LOG = logging.getLogger("daisy.eda.scan_workspaces")
 
 NAME = "scan_workspaces"
 DESCRIPTION = (
@@ -35,22 +38,34 @@ INPUT_SCHEMA = {
 
 
 def make_handler(audit=None, **kwargs):
-    def scan_workspaces(search_root: str,
+    def scan_workspaces(search_root: str = "",
                         output_dir: str = "",
                         analyze_stages: bool = True) -> str:
         t0 = time.time()
+
+        def _audit_and_return(payload: dict, success: bool) -> str:
+            if audit is not None:
+                audit.log_tool_execution(
+                    tool_name=NAME, success=success,
+                    latency_s=time.time() - t0, round_num=-1,
+                )
+            return json.dumps(payload)
+
+        if not isinstance(search_root, str) or not search_root.strip():
+            return _audit_and_return({
+                "ok": False,
+                "error": "search_root must be a non-empty string path",
+                "error_code": "INVALID_INPUT",
+            }, success=False)
+
         search_root = os.path.abspath(search_root)
 
         if not os.path.isdir(search_root):
-            elapsed = time.time() - t0
-            if audit is not None:
-                audit.log_tool_execution(
-                    tool_name=NAME, success=False, latency_s=elapsed, round_num=-1,
-                )
-            return json.dumps({
+            return _audit_and_return({
                 "ok": False,
                 "error": "search_root does not exist or is not a directory: %s" % search_root,
-            })
+                "error_code": "SEARCH_ROOT_NOT_FOUND",
+            }, success=False)
 
         out_dir = os.path.abspath(output_dir) if output_dir else search_root
 
@@ -61,11 +76,7 @@ def make_handler(audit=None, **kwargs):
                 analyze_stages=analyze_stages,
             )
             elapsed = time.time() - t0
-            if audit is not None:
-                audit.log_tool_execution(
-                    tool_name=NAME, success=True, latency_s=elapsed, round_num=-1,
-                )
-            return json.dumps({
+            return _audit_and_return({
                 "ok": True,
                 "search_root": search_root,
                 "output_dir": out_dir,
@@ -81,13 +92,13 @@ def make_handler(audit=None, **kwargs):
                     "pnr":    os.path.join(out_dir, "PNR_workspaces.rpt"),
                 },
                 "elapsed_sec": round(elapsed, 3),
-            })
+            }, success=True)
         except Exception as exc:
-            elapsed = time.time() - t0
-            if audit is not None:
-                audit.log_tool_execution(
-                    tool_name=NAME, success=False, latency_s=elapsed, round_num=-1,
-                )
-            return json.dumps({"ok": False, "error": "scan failed: %s" % exc})
+            return _audit_and_return({
+                "ok": False,
+                "error": "scan failed: %s: %s" % (type(exc).__name__, exc),
+                "error_code": "UNEXPECTED_ERROR",
+                "error_type": type(exc).__name__,
+            }, success=False)
 
     return scan_workspaces

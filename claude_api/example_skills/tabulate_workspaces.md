@@ -57,6 +57,12 @@ Tell the user:
 - Path to the written CSV.
 - `num_trials` and the `baseline_applied` boolean (true if baseline deltas
   were appended to the CSV).
+- If `extraction_errors_count > 0`: flag prominently — that many trials
+  hit an exception during metric extraction and appear in the CSV with
+  `Block Name = ERROR`; advise the user to inspect those rows or re-run
+  with only the healthy workspaces.
+- If `preview_truncated` is true: mention that the agent-visible preview
+  is a head slice of the CSV; the full file is the authoritative output.
 - A 1–2 line interpretation of the preview (e.g. "Trial inc3_fixed has PLACEOPT
   WNS -0.105 vs baseline ISO").
 - Reminder that the file is semicolon-delimited — open in Excel via

@@ -12,6 +12,8 @@ In addition to the ladder, returns:
   - final.csv mtime (for detecting stale csvs)
   - A tail of the CURRENT stage's log (one log only) so the agent can spot
     unexpected errors outside the tool's regex rules.
+  - A warnings[] list surfacing silent errors (e.g. CSV parse failure) that
+    the agent should pass to the user.
 """
 from __future__ import annotations
 import csv as _csv
@@ -21,6 +23,7 @@ import os
 import re
 import time
 from datetime import datetime
+from typing import List, Optional, Tuple
 
 LOG = logging.getLogger("daisy.eda.check_workspace_stage")
 
@@ -29,11 +32,13 @@ DESCRIPTION = (
     "Report where a single Cadence SYN/PNR workspace is in the flow. "
     "Returns current_stage, current_status (SUCCESS/ONGOING/FAIL/NOT_STARTED), "
     "last_completed, and a stages[] ladder with per-stage status, log mtime, "
-    "and runtime. Also returns SYN sub-stage progress (syn_substages), the "
-    "final.csv mtime, and a tail of the current stage's log (~40 lines, 4K "
-    "char cap) so you can spot errors the rule-based checks may have missed. "
-    "Stages short-circuit: once any stage is non-SUCCESS, later stages are "
-    "NOT_AVAILABLE. Use after scan_workspaces to drill into one trial."
+    "runtime, and a fail_reason when a stage failed. Also returns SYN sub-stage "
+    "progress (syn_substages), the final.csv mtime, a tail of the current "
+    "stage's log (~40 lines, 4K char cap), current_log_tail_status indicating "
+    "whether the tail was read cleanly, and a warnings[] list surfacing any "
+    "silent errors the agent should relay to the user. Stages short-circuit: "
+    "once any stage is non-SUCCESS, later stages are NOT_AVAILABLE. Use after "
+    "scan_workspaces to drill into one trial."
 )
 INPUT_SCHEMA = {
     "type": "object",
@@ -75,62 +80,93 @@ _CSV_MIN_COLS          = 33  # need at least up through Real Elapsed
 
 _TAIL_LINES     = 40
 _TAIL_CHAR_CAP  = 4000
+# Size of the bounded read window used for tail operations. 4x char_cap gives
+# headroom for logs with unusually long lines; clamped to at least 16 KB.
+_TAIL_WINDOW    = max(_TAIL_CHAR_CAP * 4, 16_384)
 
 
-def _mtime(path: str):
+def _mtime(path: str) -> Optional[float]:
     try:
         return os.path.getmtime(path)
     except OSError:
         return None
 
 
-def _format_mtime(mt) -> str:
+def _format_mtime(mt: Optional[float]) -> str:
     if mt is None:
         return "NA"
     return datetime.fromtimestamp(mt).strftime("%Y-%m-%d %H:%M:%S")
 
 
-def _tail_has(path: str, marker: str, n: int = 2) -> bool:
+def _read_tail_window(path: str, window: int = _TAIL_WINDOW) -> Tuple[str, str]:
+    """Read the last `window` bytes of a file via seek.
+
+    Returns (text, status) where status is one of:
+      "ok"         — text was read successfully
+      "not_found"  — path is empty or file doesn't exist
+      "read_error" — OSError while stat/read (permissions, stale NFS, ...)
+
+    Caller must NOT rely on the first partial line of `text` — it may be a
+    mid-line fragment when the window doesn't cover the whole file.
+    """
+    if not path or not os.path.isfile(path):
+        return "", "not_found"
     try:
-        with open(path, "r", errors="ignore") as fh:
-            lines = fh.readlines()
-    except OSError:
-        return False
-    tail = "".join(lines[-n:]) if lines else ""
-    return marker in tail
+        size = os.path.getsize(path)
+        read_from = max(0, size - window)
+        with open(path, "rb") as fh:
+            fh.seek(read_from)
+            data = fh.read()
+    except OSError as exc:
+        LOG.debug("tail read failed for %s: %s", path, exc)
+        return "", "read_error"
+    text = data.decode("utf-8", errors="ignore")
+    # Drop mid-line prefix when we started past the beginning of the file.
+    if read_from > 0:
+        nl = text.find("\n")
+        if nl >= 0:
+            text = text[nl + 1:]
+    return text, "ok"
+
+
+def _tail_text(path: str, n: int = 2) -> Optional[str]:
+    """Return a string joining the last n lines. None on read error / missing."""
+    text, status = _read_tail_window(path)
+    if status != "ok":
+        return None
+    lines = text.splitlines(keepends=True)
+    return "".join(lines[-n:]) if lines else ""
+
+
+def _tail_has(path: str, marker: str, n: int = 2) -> bool:
+    tail = _tail_text(path, n=n)
+    return tail is not None and marker in tail
 
 
 def _tail_matches(path: str, pattern: "re.Pattern", n: int = 2) -> bool:
     """Regex-anchored variant of _tail_has. Matches across the last n lines."""
-    try:
-        with open(path, "r", errors="ignore") as fh:
-            lines = fh.readlines()
-    except OSError:
-        return False
-    tail = "".join(lines[-n:]) if lines else ""
-    return bool(pattern.search(tail))
+    tail = _tail_text(path, n=n)
+    return tail is not None and bool(pattern.search(tail))
 
 
 def _file_has(path: str, pattern: "re.Pattern") -> bool:
     try:
         with open(path, "r", errors="ignore") as fh:
-            for line in fh:
-                if pattern.search(line):
-                    return True
+            return any(pattern.search(line) for line in fh)
     except OSError:
         return False
-    return False
 
 
-def _parse_syn_substages(final_csv: str):
-    """Parse final.csv and return list of {name, real_runtime, real_elapsed}.
+def _parse_syn_substages(final_csv: str) -> Tuple[List[dict], Optional[str]]:
+    """Parse final.csv and return (substages, parse_error_msg).
 
     Presence of a row means the sub-stage ran to completion (it emitted metrics).
-    Returns [] if the file doesn't exist or can't be parsed.
+    Returns ([], None) if the file doesn't exist. Returns ([], "msg") if
+    the file exists but parsing failed — caller should surface in warnings[].
     """
     if not os.path.isfile(final_csv):
-        return []
-    out = []
+        return [], None
+    out: List[dict] = []
     try:
         with open(final_csv, "r", errors="ignore") as fh:
             reader = _csv.reader(fh)
@@ -145,114 +181,123 @@ def _parse_syn_substages(final_csv: str):
                     "real_runtime": row[_CSV_REAL_RUNTIME_COL].strip(),
                     "real_elapsed": row[_CSV_REAL_ELAPSED_COL].strip(),
                 })
-    except Exception as exc:  # pragma: no cover
-        LOG.debug("failed to parse %s: %s", final_csv, exc)
-        return []
-    return out
+    except (OSError, _csv.Error, ValueError, IndexError) as exc:
+        msg = "failed to parse final.csv at %s: %s: %s" % (
+            final_csv, type(exc).__name__, exc,
+        )
+        LOG.debug(msg)
+        return [], msg
+    return out, None
 
 
-def _extract_pnr_runtime(log_path: str):
-    """Return last-occurrence `real=HH:MM:SS` value from an Innovus log, or None."""
-    last = None
+def _scan_pnr_log(log_path: str) -> Tuple[bool, Optional[str]]:
+    """Single pass over a PNR log: return (has_finish_marker, last_real_runtime).
+
+    Collapses what used to be two separate full-file scans (_file_has for
+    _PNR_FINISH_RE + _extract_pnr_runtime) into one — ~halves I/O for the
+    SUCCESS path on multi-hundred-MB Innovus logs.
+    """
+    found_finish = False
+    last_runtime: Optional[str] = None
     try:
         with open(log_path, "r", errors="ignore") as fh:
             for line in fh:
+                if not found_finish and _PNR_FINISH_RE.search(line):
+                    found_finish = True
                 m = _PNR_RUNTIME_RE.search(line)
                 if m:
-                    last = m.group(1)
+                    last_runtime = m.group(1)
     except OSError:
-        return None
-    return last
+        return False, None
+    return found_finish, last_runtime
 
 
 def _tail_file(log_path: str, n_lines: int = _TAIL_LINES,
-               char_cap: int = _TAIL_CHAR_CAP) -> str:
-    """Read last ~n_lines of a file without loading the whole file into memory.
+               char_cap: int = _TAIL_CHAR_CAP) -> Tuple[str, str]:
+    """Read last ~n_lines of a file via bounded seek.
 
-    Seeks from the end in a bounded window, splits on newline, keeps the last
-    n_lines. Cadence logs routinely exceed a GB; readlines() would OOM.
+    Returns (tail_text, status) where status is "ok", "empty", "not_found",
+    or "read_error". Agents check status to distinguish a stage that's simply
+    silent from one whose log couldn't be read.
     """
-    if not log_path or not os.path.isfile(log_path):
-        return ""
-    # Read a window that's comfortably larger than char_cap so n_lines fits.
-    # Each log line is typically < 200 chars; 4x char_cap gives plenty of headroom.
-    window = max(char_cap * 4, 16_384)
-    try:
-        size = os.path.getsize(log_path)
-        read_from = max(0, size - window)
-        with open(log_path, "rb") as fh:
-            fh.seek(read_from)
-            data = fh.read()
-    except OSError as exc:
-        LOG.debug("tail read failed for %s: %s", log_path, exc)
-        return ""
-    text = data.decode("utf-8", errors="ignore")
-    # If we started mid-line, drop the partial first line.
-    if read_from > 0:
-        nl = text.find("\n")
-        if nl >= 0:
-            text = text[nl + 1:]
+    text, read_status = _read_tail_window(log_path)
+    if read_status != "ok":
+        return "", read_status
     lines = text.splitlines(keepends=True)
     tail = "".join(lines[-n_lines:])
+    if not tail:
+        return "", "empty"
     if len(tail) > char_cap:
         # Truncate to fit within char_cap INCLUDING the marker.
         marker = "\n... (truncated)"
         keep = max(0, char_cap - len(marker))
         tail = tail[-keep:] + marker
-    return tail
+    return tail, "ok"
 
 
 def _analyze_syn(workspace: str):
-    """Return (status, mtime, log_path, final_csv_path)."""
+    """Return (status, syn_mtime, syn_log, final_csv_path, final_csv_mtime, fail_reason).
+
+    fail_reason is a short token explaining WHY SYN is FAIL, for agent decision-
+    making. One of: "csv_missing", "csv_stale", "no_final_row", or None when
+    the stage isn't FAIL.
+    """
     syn_log = os.path.join(workspace, "syn", "logs", "syn.log")
     final_csv = os.path.join(workspace, "syn", "reports", "summary_table", "final.csv")
 
     if not os.path.isfile(syn_log):
-        return ("NOT_AVAILABLE", None, "", final_csv)
+        return ("NOT_AVAILABLE", None, "", final_csv, None, None)
 
     syn_mtime = _mtime(syn_log)
+    final_csv_mtime = _mtime(final_csv)
 
-    # ONGOING: no "Done!" in the last 2 lines yet
     # Line-anchored: matches tcsh `grep "^Done!"`. Rejects mid-line occurrences
     # like "All modules Done! 42 warnings" which shouldn't signal completion.
     if not _tail_matches(syn_log, _SYN_DONE_RE, n=2):
-        return ("ONGOING", syn_mtime, syn_log, final_csv)
+        return ("ONGOING", syn_mtime, syn_log, final_csv, final_csv_mtime, None)
 
     # Done! — validate via final.csv
-    if os.path.isfile(final_csv):
-        csv_mtime = _mtime(final_csv)
-        if csv_mtime and syn_mtime and csv_mtime > syn_mtime:
-            if _file_has(final_csv, _SYN_FINAL_ROW_RE):
-                return ("SUCCESS", syn_mtime, syn_log, final_csv)
-    return ("FAIL", syn_mtime, syn_log, final_csv)
+    if final_csv_mtime is None:
+        return ("FAIL", syn_mtime, syn_log, final_csv, None, "csv_missing")
+    if syn_mtime is not None and final_csv_mtime <= syn_mtime:
+        return ("FAIL", syn_mtime, syn_log, final_csv, final_csv_mtime, "csv_stale")
+    if not _file_has(final_csv, _SYN_FINAL_ROW_RE):
+        return ("FAIL", syn_mtime, syn_log, final_csv, final_csv_mtime, "no_final_row")
+    return ("SUCCESS", syn_mtime, syn_log, final_csv, final_csv_mtime, None)
 
 
 def _analyze_pnr_stage(workspace: str, stage_dir: str,
-                       prior_mtime, prior_ok: bool):
-    """Return (status, mtime, log_path)."""
+                       prior_mtime: Optional[float], prior_ok: bool):
+    """Return (status, mtime, log_path, runtime, fail_reason).
+
+    fail_reason is "no_unconditional_finish" when a PNR stage has an Ending
+    line but lacks the unconditional-finish marker; otherwise None.
+    """
     if not prior_ok:
-        return ("NOT_AVAILABLE", None, "")
+        return ("NOT_AVAILABLE", None, "", None, None)
 
     log = os.path.join(workspace, "pnr", stage_dir, "logs", stage_dir + ".log")
     if not os.path.isfile(log):
-        return ("NOT_AVAILABLE", None, "")
+        return ("NOT_AVAILABLE", None, "", None, None)
 
     mt = _mtime(log)
+    # Stale-log guard: current log must be newer than the prior stage's log.
     if prior_mtime is not None and mt is not None and mt < prior_mtime:
-        return ("NOT_AVAILABLE", mt, log)
+        return ("NOT_AVAILABLE", mt, log, None, None)
 
     if not _tail_has(log, "Ending", n=2):
-        return ("ONGOING", mt, log)
+        return ("ONGOING", mt, log, None, None)
 
-    if _file_has(log, _PNR_FINISH_RE):
-        return ("SUCCESS", mt, log)
-    return ("FAIL", mt, log)
+    found_finish, runtime = _scan_pnr_log(log)
+    if found_finish:
+        return ("SUCCESS", mt, log, runtime, None)
+    return ("FAIL", mt, log, None, "no_unconditional_finish")
 
 
-def _derive_summary(stages: list):
+def _derive_summary(stages: list) -> Tuple[Optional[str], str, Optional[str], str]:
     """Return (current_stage, current_status, last_completed, current_log_path)."""
-    last_completed = None
-    current_stage = None
+    last_completed: Optional[str] = None
+    current_stage: Optional[str] = None
     current_status = "NOT_STARTED"
     current_log = ""
 
@@ -276,42 +321,47 @@ def make_handler(audit=None, **kwargs):
     def check_workspace_stage(workspace: str = "") -> str:
         t0 = time.time()
 
+        def _emit_audit(success: bool) -> None:
+            if audit is not None:
+                audit.log_tool_execution(
+                    tool_name=NAME, success=success,
+                    latency_s=time.time() - t0, round_num=-1,
+                )
+
         # Input guard: empty string silently resolves to cwd; None raises
         # TypeError inside abspath. Both must produce a clean ok:false.
         if not isinstance(workspace, str) or not workspace.strip():
-            if audit is not None:
-                audit.log_tool_execution(
-                    tool_name=NAME, success=False,
-                    latency_s=time.time() - t0, round_num=-1,
-                )
+            _emit_audit(False)
             return json.dumps({
                 "ok": False,
                 "error": "workspace must be a non-empty string path",
+                "error_code": "INVALID_INPUT",
             })
 
         ws = os.path.abspath(workspace)
 
         if not os.path.isdir(ws):
-            if audit is not None:
-                audit.log_tool_execution(
-                    tool_name=NAME, success=False,
-                    latency_s=time.time() - t0, round_num=-1,
-                )
+            _emit_audit(False)
             return json.dumps({
                 "ok": False,
                 "error": "workspace does not exist or is not a directory: %s" % ws,
+                "error_code": "WORKSPACE_NOT_FOUND",
             })
+
+        warnings: List[str] = []
 
         try:
             stages = []
 
             # SYN
-            syn_status, syn_mtime, syn_log, final_csv = _analyze_syn(ws)
-            syn_substages = _parse_syn_substages(final_csv)
+            (syn_status, syn_mtime, syn_log, final_csv,
+             final_csv_mtime, syn_fail_reason) = _analyze_syn(ws)
+            syn_substages, parse_error = _parse_syn_substages(final_csv)
+            if parse_error is not None:
+                warnings.append(parse_error)
             syn_runtime = (
                 syn_substages[-1]["real_elapsed"] if syn_substages else None
-            ) or None
-            final_csv_mtime_str = _format_mtime(_mtime(final_csv))
+            )
 
             stages.append({
                 "name": "SYN",
@@ -319,7 +369,8 @@ def make_handler(audit=None, **kwargs):
                 "mtime": _format_mtime(syn_mtime),
                 "log": syn_log,
                 "runtime": syn_runtime,
-                "final_csv_mtime": final_csv_mtime_str,
+                "fail_reason": syn_fail_reason,
+                "final_csv_mtime": _format_mtime(final_csv_mtime),
                 "syn_substages": syn_substages,
             })
             prior_mtime = syn_mtime
@@ -327,16 +378,16 @@ def make_handler(audit=None, **kwargs):
 
             # PNR ladder
             for dir_name, disp in _PNR_LADDER:
-                status, mt, log = _analyze_pnr_stage(
+                status, mt, log, runtime, fail_reason = _analyze_pnr_stage(
                     ws, dir_name, prior_mtime, prior_ok,
                 )
-                rt = _extract_pnr_runtime(log) if (status == "SUCCESS" and log) else None
                 stages.append({
                     "name": disp,
                     "status": status,
                     "mtime": _format_mtime(mt),
                     "log": log,
-                    "runtime": rt,
+                    "runtime": runtime,
+                    "fail_reason": fail_reason,
                 })
                 if status == "SUCCESS":
                     prior_mtime = mt
@@ -345,14 +396,18 @@ def make_handler(audit=None, **kwargs):
                     prior_ok = False
 
             current_stage, current_status, last_completed, current_log = _derive_summary(stages)
-            current_tail = _tail_file(current_log) if current_log else ""
+            if current_log:
+                current_tail, tail_status = _tail_file(current_log)
+            else:
+                current_tail, tail_status = "", "not_started"
 
-            if audit is not None:
-                audit.log_tool_execution(
-                    tool_name=NAME, success=True,
-                    latency_s=time.time() - t0, round_num=-1,
+            if tail_status == "read_error":
+                warnings.append(
+                    "could not read current log tail (permissions or I/O "
+                    "error): %s" % current_log
                 )
 
+            _emit_audit(True)
             return json.dumps({
                 "ok": True,
                 "workspace": ws,
@@ -362,13 +417,16 @@ def make_handler(audit=None, **kwargs):
                 "stages": stages,
                 "current_log_path": current_log,
                 "current_log_tail": current_tail,
+                "current_log_tail_status": tail_status,
+                "warnings": warnings,
             })
         except Exception as exc:
-            if audit is not None:
-                audit.log_tool_execution(
-                    tool_name=NAME, success=False,
-                    latency_s=time.time() - t0, round_num=-1,
-                )
-            return json.dumps({"ok": False, "error": "check failed: %s" % exc})
+            _emit_audit(False)
+            return json.dumps({
+                "ok": False,
+                "error": "check failed: %s: %s" % (type(exc).__name__, exc),
+                "error_code": "UNEXPECTED_ERROR",
+                "error_type": type(exc).__name__,
+            })
 
     return check_workspace_stage

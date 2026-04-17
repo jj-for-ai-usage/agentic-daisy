@@ -1814,6 +1814,248 @@ def test_check_workspace_stage_pnr_runtime_fractional():
     shutil.rmtree(d)
 
 
+@test("EDA: check_workspace_stage SYN FAIL includes fail_reason=csv_missing")
+def test_check_workspace_stage_syn_fail_reason_csv_missing():
+    from claude_api.tools.eda.check_workspace_stage import make_handler as make_check
+    d = tempfile.mkdtemp()
+    # Done! but no final.csv
+    _write(os.path.join(d, "syn/logs/syn.log"), "Done!\n")
+    r = json.loads(make_check(audit=None)(workspace=d))
+    syn = r["stages"][0]
+    assert syn["status"] == "FAIL"
+    assert syn["fail_reason"] == "csv_missing", syn
+    shutil.rmtree(d)
+
+
+@test("EDA: check_workspace_stage SYN FAIL includes fail_reason=csv_stale")
+def test_check_workspace_stage_syn_fail_reason_csv_stale():
+    from claude_api.tools.eda.check_workspace_stage import make_handler as make_check
+    d = tempfile.mkdtemp()
+    final_csv = os.path.join(d, "syn/reports/summary_table/final.csv")
+    _write(final_csv, "Metric,x\nfinal,0.1\n")
+    syn_log = os.path.join(d, "syn/logs/syn.log")
+    _write(syn_log, "Done!\n")
+    _touch_after(syn_log, final_csv)  # log newer than csv
+    r = json.loads(make_check(audit=None)(workspace=d))
+    syn = r["stages"][0]
+    assert syn["status"] == "FAIL"
+    assert syn["fail_reason"] == "csv_stale", syn
+    shutil.rmtree(d)
+
+
+@test("EDA: check_workspace_stage SYN FAIL includes fail_reason=no_final_row")
+def test_check_workspace_stage_syn_fail_reason_no_final_row():
+    from claude_api.tools.eda.check_workspace_stage import make_handler as make_check
+    d = tempfile.mkdtemp()
+    syn_log = os.path.join(d, "syn/logs/syn.log")
+    _write(syn_log, "Done!\n")
+    final_csv = os.path.join(d, "syn/reports/summary_table/final.csv")
+    # Fresh CSV but no line starting with "final,"
+    _write(final_csv, "Metric,x\nconstraints,0.1\nmap,0.2\n")
+    _touch_after(final_csv, syn_log)
+    r = json.loads(make_check(audit=None)(workspace=d))
+    syn = r["stages"][0]
+    assert syn["status"] == "FAIL"
+    assert syn["fail_reason"] == "no_final_row", syn
+    shutil.rmtree(d)
+
+
+@test("EDA: check_workspace_stage PNR FAIL includes fail_reason=no_unconditional_finish")
+def test_check_workspace_stage_pnr_fail_reason():
+    from claude_api.tools.eda.check_workspace_stage import make_handler as make_check
+    d = tempfile.mkdtemp()
+    final_csv = _write_syn_success_chain(d)
+    init_log = os.path.join(d, "pnr/initdesign/logs/initdesign.log")
+    # Ending present but no unconditional finish marker.
+    _write(init_log, 'ERROR: init failed\nEnding\n')
+    _touch_after(init_log, final_csv)
+    r = json.loads(make_check(audit=None)(workspace=d))
+    init = next(s for s in r["stages"] if s["name"] == "INIT_DESIGN")
+    assert init["status"] == "FAIL"
+    assert init["fail_reason"] == "no_unconditional_finish", init
+    shutil.rmtree(d)
+
+
+@test("EDA: check_workspace_stage SUCCESS has fail_reason=None on every stage")
+def test_check_workspace_stage_success_fail_reason_none():
+    from claude_api.tools.eda.check_workspace_stage import make_handler as make_check
+    d = tempfile.mkdtemp()
+    _write_syn_success_chain(d)
+    r = json.loads(make_check(audit=None)(workspace=d))
+    assert all(s["fail_reason"] is None for s in r["stages"]), r["stages"]
+    shutil.rmtree(d)
+
+
+@test("EDA: check_workspace_stage warnings[] surfaces CSV parse error")
+def test_check_workspace_stage_warnings_parse_error():
+    """A final.csv that raises on read should surface as a top-level warning."""
+    from claude_api.tools.eda import check_workspace_stage as cws_mod
+    orig = cws_mod._parse_syn_substages
+    cws_mod._parse_syn_substages = lambda path: ([], "failed to parse final.csv at %s: csv.Error: simulated" % path)
+    try:
+        d = tempfile.mkdtemp()
+        _write(os.path.join(d, "syn/logs/syn.log"), "noise\n")
+        r = json.loads(cws_mod.make_handler(audit=None)(workspace=d))
+        assert any("final.csv" in w and "parse" in w.lower() for w in r["warnings"]), r["warnings"]
+        assert r["stages"][0]["syn_substages"] == []
+        shutil.rmtree(d)
+    finally:
+        cws_mod._parse_syn_substages = orig
+
+
+@test("EDA: check_workspace_stage current_log_tail_status reports 'ok' / 'not_started'")
+def test_check_workspace_stage_tail_status_values():
+    from claude_api.tools.eda.check_workspace_stage import make_handler as make_check
+    # not_started: empty workspace
+    d1 = tempfile.mkdtemp()
+    r1 = json.loads(make_check(audit=None)(workspace=d1))
+    assert r1["current_log_tail_status"] == "not_started"
+    shutil.rmtree(d1)
+    # ok: SYN log exists and is readable
+    d2 = tempfile.mkdtemp()
+    _write(os.path.join(d2, "syn/logs/syn.log"), "some content\n")
+    r2 = json.loads(make_check(audit=None)(workspace=d2))
+    assert r2["current_log_tail_status"] == "ok"
+    shutil.rmtree(d2)
+
+
+@test("EDA: check_workspace_stage catches unexpected exception with error_type")
+def test_check_workspace_stage_unexpected_error_shape():
+    """When something unexpected blows up inside the try, error_type must surface."""
+    from claude_api.tools.eda import check_workspace_stage as cws_mod
+    # Swap _analyze_syn to raise a distinctive error; restore when done.
+    orig = cws_mod._analyze_syn
+    class Boom(RuntimeError):
+        pass
+    cws_mod._analyze_syn = lambda ws: (_ for _ in ()).throw(Boom("kaboom"))
+    try:
+        d = tempfile.mkdtemp()
+        r = json.loads(cws_mod.make_handler(audit=None)(workspace=d))
+        assert r["ok"] is False, r
+        assert r["error_type"] == "Boom", r
+        assert r["error_code"] == "UNEXPECTED_ERROR", r
+        assert "kaboom" in r["error"]
+        shutil.rmtree(d)
+    finally:
+        cws_mod._analyze_syn = orig
+
+
+@test("EDA: tabulate_workspaces preview_truncated True on huge CSV")
+def test_tabulate_workspaces_preview_truncated():
+    from claude_api.tools.eda.tabulate_workspaces import make_handler as make_tab
+    from claude_api.tools.eda import tabulate_workspaces as tab_mod
+    # Patch tabulate_to_string to produce a long CSV quickly.
+    orig = tab_mod.Tabulator
+
+    class FakeTabulator:
+        def tabulate_to_string(self, work_dirs, baseline_dir=None):
+            # One header row, then many identical rows; total way over 4000 chars.
+            rows = ["Title;' trialA;' trialB"]
+            for i in range(500):
+                rows.append("row%04d;" % i + ("x" * 200) + ";" + ("y" * 200))
+            return "\n".join(rows) + "\n"
+
+    tab_mod.Tabulator = FakeTabulator
+    try:
+        d = tempfile.mkdtemp()
+        out = os.path.join(d, "tab.csv")
+        r = json.loads(make_tab(audit=None)(work_dirs=["/a", "/b"], output_file=out))
+        assert r["ok"] is True
+        assert r["preview_truncated"] is True
+        assert r["preview"].endswith("... (truncated)")
+        assert len(r["preview"]) <= 4000, len(r["preview"])
+        shutil.rmtree(d)
+    finally:
+        tab_mod.Tabulator = orig
+
+
+@test("EDA: tabulate_workspaces extraction_errors_count surfaces ERROR trials")
+def test_tabulate_workspaces_extraction_errors_count():
+    from claude_api.tools.eda.tabulate_workspaces import make_handler as make_tab
+    from claude_api.tools.eda import tabulate_workspaces as tab_mod
+    orig = tab_mod.Tabulator
+
+    class FakeTabulator:
+        def tabulate_to_string(self, work_dirs, baseline_dir=None):
+            # 3 trials; middle trial failed extraction.
+            return (
+                "Title;' trialA;' trialB;' trialC\n"
+                "Block Name;' blkA;' ERROR;' blkC\n"
+                "Version;' 1;' 2;' 3\n"
+            )
+
+    tab_mod.Tabulator = FakeTabulator
+    try:
+        d = tempfile.mkdtemp()
+        r = json.loads(make_tab(audit=None)(work_dirs=["/a", "/b", "/c"]))
+        assert r["ok"] is True
+        assert r["extraction_errors_count"] == 1, r
+        shutil.rmtree(d)
+    finally:
+        tab_mod.Tabulator = orig
+
+
+@test("EDA: tabulate_workspaces _load_dirs_from_file handles unreadable file")
+def test_tabulate_workspaces_load_dirs_error():
+    """If the rpt file becomes unreadable between isfile() and open(), the
+    tool must return a clean JSON error, not crash."""
+    from claude_api.tools.eda.tabulate_workspaces import _load_dirs_from_file
+    # Directory passed as a file path -> open() raises IsADirectoryError.
+    d = tempfile.mkdtemp()
+    dirs, err = _load_dirs_from_file(d)
+    assert dirs is None
+    assert err is not None and "IsADirectoryError" in err, err
+    shutil.rmtree(d)
+
+
+@test("EDA: scan_workspaces empty search_root returns INVALID_INPUT")
+def test_scan_workspaces_empty_search_root():
+    from claude_api.tools.eda.scan_workspaces import make_handler as make_scan
+    r = json.loads(make_scan(audit=None)(search_root=""))
+    assert r["ok"] is False
+    assert r["error_code"] == "INVALID_INPUT", r
+
+
+@test("EDA: scan_workspaces missing root returns SEARCH_ROOT_NOT_FOUND code")
+def test_scan_workspaces_not_found_code():
+    from claude_api.tools.eda.scan_workspaces import make_handler as make_scan
+    r = json.loads(make_scan(audit=None)(search_root="/no/such/path/ever"))
+    assert r["ok"] is False
+    assert r["error_code"] == "SEARCH_ROOT_NOT_FOUND", r
+
+
+@test("EDA: PNR single-pass scan matches previous two-pass output")
+def test_pnr_single_pass_matches_reference():
+    """Guarantee the consolidated PNR scan produces the same
+    (finish_found, runtime) as the previous separate scans would."""
+    from claude_api.tools.eda.check_workspace_stage import (
+        _scan_pnr_log, _file_has, _PNR_FINISH_RE, _PNR_RUNTIME_RE,
+    )
+    d = tempfile.mkdtemp()
+    log = os.path.join(d, "placeopt.log")
+    _write(log, (
+        "Starting placeopt\n"
+        "Some noise real=01:00:00 not the last real\n"
+        "Finish plugin post unconditional\n"
+        '--- Ending "Innovus" (totcpu=10:00:00, real=02:30:45, mem=3G) ---\n'
+        "Ending\n"
+    ))
+    # Reference: what the old two-pass code would compute.
+    ref_finish = _file_has(log, _PNR_FINISH_RE)
+    ref_runtime = None
+    with open(log) as fh:
+        for line in fh:
+            m = _PNR_RUNTIME_RE.search(line)
+            if m:
+                ref_runtime = m.group(1)
+    # New single-pass.
+    found, runtime = _scan_pnr_log(log)
+    assert found == ref_finish
+    assert runtime == ref_runtime
+    assert runtime == "02:30:45"
+    shutil.rmtree(d)
+
+
 @test("EDA: tabulate_workspaces synthetic trial produces Title header")
 def test_tabulate_workspaces_synthetic():
     from claude_api.tools.eda.tabulate_workspaces import make_handler as make_tab
@@ -1981,6 +2223,20 @@ OFFLINE_TESTS = [
     test_check_workspace_stage_syn_done_midline,
     test_check_workspace_stage_syn_done_line_start,
     test_check_workspace_stage_pnr_runtime_fractional,
+    test_check_workspace_stage_syn_fail_reason_csv_missing,
+    test_check_workspace_stage_syn_fail_reason_csv_stale,
+    test_check_workspace_stage_syn_fail_reason_no_final_row,
+    test_check_workspace_stage_pnr_fail_reason,
+    test_check_workspace_stage_success_fail_reason_none,
+    test_check_workspace_stage_warnings_parse_error,
+    test_check_workspace_stage_tail_status_values,
+    test_check_workspace_stage_unexpected_error_shape,
+    test_tabulate_workspaces_preview_truncated,
+    test_tabulate_workspaces_extraction_errors_count,
+    test_tabulate_workspaces_load_dirs_error,
+    test_scan_workspaces_empty_search_root,
+    test_scan_workspaces_not_found_code,
+    test_pnr_single_pass_matches_reference,
 ]
 
 QUICK_TESTS = [

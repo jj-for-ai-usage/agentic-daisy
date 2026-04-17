@@ -79,11 +79,34 @@ SYN got through the last-listed sub-stage and stopped.
   is its last ~40 lines, hard-capped at 4000 characters INCLUDING the
   truncation marker `\n... (truncated)` appended when the cap is hit. Very
   long log lines may be cut mid-line; don't rely on exact line counts.
-- `""` for both when `current_status == NOT_STARTED`.
+- `current_log_tail_status` tells you *why* the tail might be missing:
+  - `"ok"` — tail read successfully.
+  - `"empty"` — log file exists but is zero bytes.
+  - `"not_found"` — no current log (usually paired with `NOT_STARTED`).
+  - `"not_started"` — no stage has a log yet.
+  - `"read_error"` — log exists but couldn't be read (permissions, I/O); a
+    matching message is appended to `warnings[]`. Surface this to the user.
 - **Always skim the tail** — the rule-based checks can miss panic strings,
   license errors, or oddities outside the regex patterns. If the tail shows
   content that contradicts the tool's status (e.g. status=SUCCESS but tail
   shows "license expired"), surface the disagreement to the user verbatim.
+
+## Fail Reasons
+Each stage carries a `fail_reason` field that is non-null only when the
+stage status is `FAIL`. Use it to tell the user WHY the stage failed:
+- SYN: `"csv_missing"` (Done! but no final.csv), `"csv_stale"` (csv mtime
+  predates syn.log — prior-run leftover), `"no_final_row"` (csv exists and
+  is fresh but lacks a `final,` row — synthesis didn't reach final).
+- PNR: `"no_unconditional_finish"` — log has `Ending` but lacks the
+  unconditional-finish marker; Innovus exited abnormally.
+
+## Warnings
+`warnings[]` is a list of short human-readable strings describing silent
+errors the tool detected. Non-empty when:
+- `final.csv` exists but couldn't be parsed (row width, encoding, etc.).
+- Current log tail couldn't be read (permissions, stale NFS).
+**Always relay warnings verbatim to the user** — the tool state may look
+nominal but the data the agent is reasoning about is incomplete.
 
 ## Example Commands
 ```
