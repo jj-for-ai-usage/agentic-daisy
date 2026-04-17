@@ -1382,6 +1382,187 @@ def test_check_workspace_stage_short_circuit():
     shutil.rmtree(d)
 
 
+def _csv_row(name: str, real_runtime: str, real_elapsed: str) -> str:
+    """Build a 37-col final.csv data row matching the real layout.
+
+    Only cols 0, 30, 32 carry meaning for check_workspace_stage; others are
+    padded with 'no_value' / zeros so row length >= 33 (tool's minimum).
+    """
+    # Build 33 columns: 0..32
+    cols = ["no_value"] * 33
+    cols[0]  = name
+    cols[30] = real_runtime
+    cols[32] = real_elapsed
+    # trailing metadata (cols 33-36): memory, version, mcps, reports path
+    return ",".join(cols + ["49863.68", "25.71-e062_1", "32", "/reports/"])
+
+
+def _write_syn_success_chain(workspace: str):
+    """Write a valid SYN SUCCESS (syn.log + fresh final.csv). Returns csv mtime."""
+    syn_log = os.path.join(workspace, "syn/logs/syn.log")
+    _write(syn_log, "Starting...\nDone!\n")
+    final_csv = os.path.join(workspace, "syn/reports/summary_table/final.csv")
+    header = (
+        "Metric,Slack (ns),  R2R (ns),  I2R (ns),  R2O (ns),  I2O (ns),  "
+        "CG  (ns),TNS (ns),  R2R (ns),  I2R (ns),  R2O (ns),  I2O (ns),  "
+        "CG  (ns),Failing Paths,Leakage Power (mW),Dynamic Power (mW),Clk "
+        "Tree Power (mW),Cell Area,Total Cell Area,Leaf Instances,Total "
+        "Instances,Utilization (%),Tot. Net Length (um),Avg. Net Length "
+        "(um),Route Overflow H (%),Route Overflow V (%),MBCI(%) "
+        "(bits/gate) ,  Max Cong,  Tot Cong,CPU Runtime (h:m:s),Real "
+        "Runtime (h:m:s),CPU Elapsed (h:m:s),Real Elapsed (h:m:s),"
+        "Memory (MB)"
+    )
+    body = "\n".join([
+        header,
+        _csv_row("constraints", "01:39:26", "01:44:54"),
+        _csv_row("map",         "03:00:29", "10:22:58"),
+        _csv_row("final",       "01:43:05", "22:11:12"),
+    ]) + "\n"
+    _write(final_csv, body)
+    _touch_after(final_csv, syn_log)
+    return final_csv
+
+
+@test("EDA: check_workspace_stage parses SYN sub-stages from CSV")
+def test_check_workspace_stage_syn_substages():
+    from claude_api.tools.eda.check_workspace_stage import make_handler as make_check
+    d = tempfile.mkdtemp()
+    _write_syn_success_chain(d)
+    r = json.loads(make_check(audit=None)(workspace=d))
+    syn = r["stages"][0]
+    assert syn["status"] == "SUCCESS"
+    subs = syn["syn_substages"]
+    assert len(subs) == 3, "got %d substages" % len(subs)
+    assert [s["name"] for s in subs] == ["constraints", "map", "final"]
+    assert subs[0]["real_runtime"] == "01:39:26"
+    assert subs[1]["real_runtime"] == "03:00:29"
+    assert subs[2]["real_runtime"] == "01:43:05"
+    shutil.rmtree(d)
+
+
+@test("EDA: check_workspace_stage surfaces final.csv mtime")
+def test_check_workspace_stage_csv_mtime():
+    from claude_api.tools.eda.check_workspace_stage import make_handler as make_check
+    # With final.csv
+    d = tempfile.mkdtemp()
+    _write_syn_success_chain(d)
+    r = json.loads(make_check(audit=None)(workspace=d))
+    assert r["stages"][0]["final_csv_mtime"] != "NA", "should have real mtime"
+    shutil.rmtree(d)
+    # Without final.csv
+    d2 = tempfile.mkdtemp()
+    _write(os.path.join(d2, "syn/logs/syn.log"), "Running...\n")
+    r2 = json.loads(make_check(audit=None)(workspace=d2))
+    assert r2["stages"][0]["final_csv_mtime"] == "NA"
+    shutil.rmtree(d2)
+
+
+@test("EDA: check_workspace_stage SYN top-level runtime is last-row Real Elapsed")
+def test_check_workspace_stage_syn_runtime():
+    from claude_api.tools.eda.check_workspace_stage import make_handler as make_check
+    d = tempfile.mkdtemp()
+    _write_syn_success_chain(d)
+    r = json.loads(make_check(audit=None)(workspace=d))
+    assert r["stages"][0]["runtime"] == "22:11:12", r["stages"][0]["runtime"]
+    shutil.rmtree(d)
+
+
+@test("EDA: check_workspace_stage PNR runtime extracted from real= line")
+def test_check_workspace_stage_pnr_runtime():
+    from claude_api.tools.eda.check_workspace_stage import make_handler as make_check
+    d = tempfile.mkdtemp()
+    _write_syn_success_chain(d)
+    final_csv = os.path.join(d, "syn/reports/summary_table/final.csv")
+
+    # INIT_DESIGN: SUCCESS
+    init_log = os.path.join(d, "pnr/initdesign/logs/initdesign.log")
+    _write(init_log, (
+        "Starting init_design\n"
+        "Finish plugin post unconditional\n"
+        '--- Ending "Innovus" (totcpu=00:45:12, real=00:45:12, mem=1G) ---\n'
+        "Ending\n"
+    ))
+    _touch_after(init_log, final_csv)
+
+    # FLOORPLAN: SUCCESS
+    fp_log = os.path.join(d, "pnr/floorplan/logs/floorplan.log")
+    _write(fp_log, (
+        "Starting floorplan\n"
+        "Finish plugin post unconditional\n"
+        '--- Ending "Innovus" (totcpu=01:10:00, real=01:05:30, mem=2G) ---\n'
+        "Ending\n"
+    ))
+    _touch_after(fp_log, init_log)
+
+    # PLACEOPT: SUCCESS with specific runtime
+    po_log = os.path.join(d, "pnr/placeopt/logs/placeopt.log")
+    _write(po_log, (
+        "Starting placeopt\n"
+        "Finish plugin post unconditional\n"
+        '--- Ending "Innovus" (totcpu=10:00:00, real=02:30:45, mem=3G) ---\n'
+        "Ending\n"
+    ))
+    _touch_after(po_log, fp_log)
+
+    r = json.loads(make_check(audit=None)(workspace=d))
+    stage_map = {s["name"]: s for s in r["stages"]}
+    assert stage_map["INIT_DESIGN"]["runtime"] == "00:45:12"
+    assert stage_map["FLOORPLAN"]["runtime"]   == "01:05:30"
+    assert stage_map["PLACEOPT"]["runtime"]    == "02:30:45"
+    # Non-SUCCESS stage has None runtime
+    assert stage_map["CLOCK"]["runtime"] is None
+    shutil.rmtree(d)
+
+
+@test("EDA: check_workspace_stage current_log_tail returns current stage log")
+def test_check_workspace_stage_tail():
+    from claude_api.tools.eda.check_workspace_stage import make_handler as make_check
+    d = tempfile.mkdtemp()
+    syn_log = os.path.join(d, "syn/logs/syn.log")
+    body = "\n".join(["line %03d synthesis output" % i for i in range(60)]) + "\n"
+    _write(syn_log, body)
+    # No Done! marker → SYN ONGOING, current_log = syn_log
+    r = json.loads(make_check(audit=None)(workspace=d))
+    assert r["current_stage"] == "SYN"
+    assert r["current_status"] == "ONGOING"
+    assert r["current_log_path"].endswith("syn.log")
+    tail = r["current_log_tail"]
+    assert tail, "tail should be non-empty"
+    assert "line 059" in tail, "expected last line in tail"
+    # Should include roughly the last 40 lines — line 000 should be trimmed
+    assert "line 000 " not in tail
+    shutil.rmtree(d)
+
+
+@test("EDA: check_workspace_stage tail empty when NOT_STARTED")
+def test_check_workspace_stage_tail_not_started():
+    from claude_api.tools.eda.check_workspace_stage import make_handler as make_check
+    d = tempfile.mkdtemp()
+    r = json.loads(make_check(audit=None)(workspace=d))
+    assert r["current_status"] == "NOT_STARTED"
+    assert r["current_log_path"] == ""
+    assert r["current_log_tail"] == ""
+    shutil.rmtree(d)
+
+
+@test("EDA: check_workspace_stage tail truncated at 4K chars")
+def test_check_workspace_stage_tail_truncated():
+    from claude_api.tools.eda.check_workspace_stage import make_handler as make_check
+    d = tempfile.mkdtemp()
+    syn_log = os.path.join(d, "syn/logs/syn.log")
+    # 50 lines × 200 chars = 10_000 chars → must truncate to ~4K
+    long_line = "x" * 200
+    body = "\n".join([long_line] * 50) + "\n"
+    _write(syn_log, body)
+    r = json.loads(make_check(audit=None)(workspace=d))
+    tail = r["current_log_tail"]
+    assert tail.endswith("... (truncated)"), "expected truncation marker"
+    # Body portion should be at or near the 4K cap (plus the marker)
+    assert 4000 <= len(tail) <= 4100, "tail length %d out of range" % len(tail)
+    shutil.rmtree(d)
+
+
 @test("EDA: tabulate_workspaces synthetic trial produces Title header")
 def test_tabulate_workspaces_synthetic():
     from claude_api.tools.eda.tabulate_workspaces import make_handler as make_tab
@@ -1529,6 +1710,13 @@ OFFLINE_TESTS = [
     test_check_workspace_stage_syn_fail_stale_csv,
     test_check_workspace_stage_placeopt_ongoing,
     test_check_workspace_stage_short_circuit,
+    test_check_workspace_stage_syn_substages,
+    test_check_workspace_stage_csv_mtime,
+    test_check_workspace_stage_syn_runtime,
+    test_check_workspace_stage_pnr_runtime,
+    test_check_workspace_stage_tail,
+    test_check_workspace_stage_tail_not_started,
+    test_check_workspace_stage_tail_truncated,
 ]
 
 QUICK_TESTS = [

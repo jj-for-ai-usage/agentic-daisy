@@ -4,22 +4,36 @@ Walks the 8-stage ladder (SYN, INIT_DESIGN, FLOORPLAN, PLACEOPT, CLOCK,
 CLOCKOPT, ROUTE, ROUTEOPT) using the same semantics as the original tcsh
 flow-status script: a stage is NOT_AVAILABLE unless the prior stage was
 SUCCESS and the current log's mtime is newer than the prior log's mtime.
+
+In addition to the ladder, returns:
+  - SYN sub-stage progress parsed from syn/reports/summary_table/final.csv
+    (which constraints/pre_gen/syn_gen/map/... completed + per-substage runtime)
+  - Per-stage wall runtime (SYN: CSV Real Elapsed; PNR: 'real=' from Ending line)
+  - final.csv mtime (for detecting stale csvs)
+  - A tail of the CURRENT stage's log (one log only) so the agent can spot
+    unexpected errors outside the tool's regex rules.
 """
 from __future__ import annotations
+import csv as _csv
 import json
+import logging
 import os
 import re
 import time
 from datetime import datetime
 
+LOG = logging.getLogger("daisy.eda.check_workspace_stage")
+
 NAME = "check_workspace_stage"
 DESCRIPTION = (
     "Report where a single Cadence SYN/PNR workspace is in the flow. "
     "Returns current_stage, current_status (SUCCESS/ONGOING/FAIL/NOT_STARTED), "
-    "last_completed, and a full stages[] ladder with per-stage status and log "
-    "mtime. Stages short-circuit: once any stage is non-SUCCESS, all later "
-    "stages are NOT_AVAILABLE (matches the tcsh flow-status convention). "
-    "Use after scan_workspaces to drill into one trial."
+    "last_completed, and a stages[] ladder with per-stage status, log mtime, "
+    "and runtime. Also returns SYN sub-stage progress (syn_substages), the "
+    "final.csv mtime, and a tail of the current stage's log (~40 lines, 4K "
+    "char cap) so you can spot errors the rule-based checks may have missed. "
+    "Stages short-circuit: once any stage is non-SUCCESS, later stages are "
+    "NOT_AVAILABLE. Use after scan_workspaces to drill into one trial."
 )
 INPUT_SCHEMA = {
     "type": "object",
@@ -45,7 +59,18 @@ _PNR_LADDER = [
 ]
 
 _PNR_FINISH_RE = re.compile(r"Finish plugin.*post.*unconditional")
-_SYN_FINAL_ROW_RE = re.compile(r"final,")
+_SYN_FINAL_ROW_RE = re.compile(r"^final,", re.MULTILINE)
+# Innovus "Ending" line: --- Ending "Innovus" (totcpu=..., real=HH:MM:SS, mem=...) ---
+_PNR_RUNTIME_RE = re.compile(r"real\s*=\s*([0-9:]+)")
+
+# final.csv column indices (0-based) in data rows
+_CSV_SUBSTAGE_NAME_COL = 0
+_CSV_REAL_RUNTIME_COL  = 30
+_CSV_REAL_ELAPSED_COL  = 32
+_CSV_MIN_COLS          = 33  # need at least up through Real Elapsed
+
+_TAIL_LINES     = 40
+_TAIL_CHAR_CAP  = 4000
 
 
 def _mtime(path: str):
@@ -82,26 +107,86 @@ def _file_has(path: str, pattern: "re.Pattern") -> bool:
     return False
 
 
+def _parse_syn_substages(final_csv: str):
+    """Parse final.csv and return list of {name, real_runtime, real_elapsed}.
+
+    Presence of a row means the sub-stage ran to completion (it emitted metrics).
+    Returns [] if the file doesn't exist or can't be parsed.
+    """
+    if not os.path.isfile(final_csv):
+        return []
+    out = []
+    try:
+        with open(final_csv, "r", errors="ignore") as fh:
+            reader = _csv.reader(fh)
+            for row in reader:
+                if not row or len(row) < _CSV_MIN_COLS:
+                    continue
+                name = row[_CSV_SUBSTAGE_NAME_COL].strip()
+                if not name or name == "Metric":  # header row
+                    continue
+                out.append({
+                    "name": name,
+                    "real_runtime": row[_CSV_REAL_RUNTIME_COL].strip(),
+                    "real_elapsed": row[_CSV_REAL_ELAPSED_COL].strip(),
+                })
+    except Exception as exc:  # pragma: no cover
+        LOG.debug("failed to parse %s: %s", final_csv, exc)
+        return []
+    return out
+
+
+def _extract_pnr_runtime(log_path: str):
+    """Return last-occurrence `real=HH:MM:SS` value from an Innovus log, or None."""
+    last = None
+    try:
+        with open(log_path, "r", errors="ignore") as fh:
+            for line in fh:
+                m = _PNR_RUNTIME_RE.search(line)
+                if m:
+                    last = m.group(1)
+    except OSError:
+        return None
+    return last
+
+
+def _tail_file(log_path: str, n_lines: int = _TAIL_LINES,
+               char_cap: int = _TAIL_CHAR_CAP) -> str:
+    if not log_path or not os.path.isfile(log_path):
+        return ""
+    try:
+        with open(log_path, "r", errors="ignore") as fh:
+            lines = fh.readlines()
+    except OSError as exc:
+        LOG.debug("tail read failed for %s: %s", log_path, exc)
+        return ""
+    tail = "".join(lines[-n_lines:])
+    if len(tail) > char_cap:
+        tail = tail[-char_cap:] + "\n... (truncated)"
+    return tail
+
+
 def _analyze_syn(workspace: str):
-    """Return (status, mtime, log_path)."""
+    """Return (status, mtime, log_path, final_csv_path)."""
     syn_log = os.path.join(workspace, "syn", "logs", "syn.log")
+    final_csv = os.path.join(workspace, "syn", "reports", "summary_table", "final.csv")
+
     if not os.path.isfile(syn_log):
-        return ("NOT_AVAILABLE", None, "")
+        return ("NOT_AVAILABLE", None, "", final_csv)
 
     syn_mtime = _mtime(syn_log)
 
     # ONGOING: no "Done!" in the last 2 lines yet
     if not _tail_has(syn_log, "Done!", n=2):
-        return ("ONGOING", syn_mtime, syn_log)
+        return ("ONGOING", syn_mtime, syn_log, final_csv)
 
     # Done! — validate via final.csv
-    final_csv = os.path.join(workspace, "syn", "reports", "summary_table", "final.csv")
     if os.path.isfile(final_csv):
         csv_mtime = _mtime(final_csv)
         if csv_mtime and syn_mtime and csv_mtime > syn_mtime:
             if _file_has(final_csv, _SYN_FINAL_ROW_RE):
-                return ("SUCCESS", syn_mtime, syn_log)
-    return ("FAIL", syn_mtime, syn_log)
+                return ("SUCCESS", syn_mtime, syn_log, final_csv)
+    return ("FAIL", syn_mtime, syn_log, final_csv)
 
 
 def _analyze_pnr_stage(workspace: str, stage_dir: str,
@@ -115,7 +200,6 @@ def _analyze_pnr_stage(workspace: str, stage_dir: str,
         return ("NOT_AVAILABLE", None, "")
 
     mt = _mtime(log)
-    # Stale-log check: this stage must be newer than the prior stage
     if prior_mtime is not None and mt is not None and mt < prior_mtime:
         return ("NOT_AVAILABLE", mt, log)
 
@@ -128,23 +212,26 @@ def _analyze_pnr_stage(workspace: str, stage_dir: str,
 
 
 def _derive_summary(stages: list):
-    """From the ladder, pick current_stage/current_status/last_completed."""
+    """Return (current_stage, current_status, last_completed, current_log_path)."""
     last_completed = None
     current_stage = None
     current_status = "NOT_STARTED"
+    current_log = ""
 
     for s in stages:
         if s["status"] == "SUCCESS":
             last_completed = s["name"]
             current_stage = s["name"]
             current_status = "SUCCESS"
+            current_log = s.get("log", "") or ""
         elif s["status"] in ("ONGOING", "FAIL"):
             current_stage = s["name"]
             current_status = s["status"]
+            current_log = s.get("log", "") or ""
             break
-        # NOT_AVAILABLE — ignore, keep walking (nothing new to report)
+        # NOT_AVAILABLE — keep walking
 
-    return current_stage, current_status, last_completed
+    return current_stage, current_status, last_completed, current_log
 
 
 def make_handler(audit=None, **kwargs):
@@ -167,10 +254,21 @@ def make_handler(audit=None, **kwargs):
             stages = []
 
             # SYN
-            syn_status, syn_mtime, syn_log = _analyze_syn(ws)
+            syn_status, syn_mtime, syn_log, final_csv = _analyze_syn(ws)
+            syn_substages = _parse_syn_substages(final_csv)
+            syn_runtime = (
+                syn_substages[-1]["real_elapsed"] if syn_substages else None
+            ) or None
+            final_csv_mtime_str = _format_mtime(_mtime(final_csv))
+
             stages.append({
-                "name": "SYN", "status": syn_status,
-                "mtime": _format_mtime(syn_mtime), "log": syn_log,
+                "name": "SYN",
+                "status": syn_status,
+                "mtime": _format_mtime(syn_mtime),
+                "log": syn_log,
+                "runtime": syn_runtime,
+                "final_csv_mtime": final_csv_mtime_str,
+                "syn_substages": syn_substages,
             })
             prior_mtime = syn_mtime
             prior_ok = (syn_status == "SUCCESS")
@@ -180,9 +278,13 @@ def make_handler(audit=None, **kwargs):
                 status, mt, log = _analyze_pnr_stage(
                     ws, dir_name, prior_mtime, prior_ok,
                 )
+                rt = _extract_pnr_runtime(log) if (status == "SUCCESS" and log) else None
                 stages.append({
-                    "name": disp, "status": status,
-                    "mtime": _format_mtime(mt), "log": log,
+                    "name": disp,
+                    "status": status,
+                    "mtime": _format_mtime(mt),
+                    "log": log,
+                    "runtime": rt,
                 })
                 if status == "SUCCESS":
                     prior_mtime = mt
@@ -190,7 +292,8 @@ def make_handler(audit=None, **kwargs):
                 else:
                     prior_ok = False
 
-            current_stage, current_status, last_completed = _derive_summary(stages)
+            current_stage, current_status, last_completed, current_log = _derive_summary(stages)
+            current_tail = _tail_file(current_log) if current_log else ""
 
             if audit is not None:
                 audit.log_tool_execution(
@@ -205,6 +308,8 @@ def make_handler(audit=None, **kwargs):
                 "current_status": current_status,
                 "last_completed": last_completed,
                 "stages": stages,
+                "current_log_path": current_log,
+                "current_log_tail": current_tail,
             })
         except Exception as exc:
             if audit is not None:
