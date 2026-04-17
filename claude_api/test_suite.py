@@ -1746,6 +1746,74 @@ def test_tabulate_workspaces_with_baseline():
     shutil.rmtree(d)
 
 
+@test("EDA: check_workspace_stage rejects empty-string workspace")
+def test_check_workspace_stage_empty_string():
+    from claude_api.tools.eda.check_workspace_stage import make_handler as make_check
+    r = json.loads(make_check(audit=None)(workspace=""))
+    assert r["ok"] is False
+    assert "non-empty string" in r["error"]
+
+
+@test("EDA: check_workspace_stage rejects None workspace")
+def test_check_workspace_stage_none_workspace():
+    from claude_api.tools.eda.check_workspace_stage import make_handler as make_check
+    r = json.loads(make_check(audit=None)(workspace=None))
+    assert r["ok"] is False
+    assert "non-empty string" in r["error"]
+
+
+@test("EDA: check_workspace_stage rejects whitespace-only workspace")
+def test_check_workspace_stage_whitespace_workspace():
+    from claude_api.tools.eda.check_workspace_stage import make_handler as make_check
+    r = json.loads(make_check(audit=None)(workspace="   "))
+    assert r["ok"] is False
+    assert "non-empty string" in r["error"]
+
+
+@test("EDA: check_workspace_stage ignores Done! mid-line (line-anchored)")
+def test_check_workspace_stage_syn_done_midline():
+    """SYN log with 'Done!' in mid-line text must not be treated as completion."""
+    from claude_api.tools.eda.check_workspace_stage import make_handler as make_check
+    d = tempfile.mkdtemp()
+    syn_log = os.path.join(d, "syn/logs/syn.log")
+    # Mid-line "Done!" in a human-readable log message — must be ONGOING, not SUCCESS.
+    _write(syn_log, "All modules Done! 42 warnings emitted\nNext step queued\n")
+    r = json.loads(make_check(audit=None)(workspace=d))
+    assert r["current_stage"] == "SYN"
+    assert r["current_status"] == "ONGOING", r
+    shutil.rmtree(d)
+
+
+@test("EDA: check_workspace_stage SUCCESS when Done! is at line start")
+def test_check_workspace_stage_syn_done_line_start():
+    """Done! at the start of the last line still counts as SUCCESS (with valid csv)."""
+    from claude_api.tools.eda.check_workspace_stage import make_handler as make_check
+    d = tempfile.mkdtemp()
+    _write_syn_success_chain(d)  # uses 'Done!\n' at start-of-line
+    r = json.loads(make_check(audit=None)(workspace=d))
+    assert r["current_status"] == "SUCCESS", r
+    shutil.rmtree(d)
+
+
+@test("EDA: check_workspace_stage PNR runtime captures fractional seconds")
+def test_check_workspace_stage_pnr_runtime_fractional():
+    from claude_api.tools.eda.check_workspace_stage import make_handler as make_check
+    d = tempfile.mkdtemp()
+    final_csv = _write_syn_success_chain(d)
+    # INIT_DESIGN SUCCESS, with Innovus log emitting fractional seconds.
+    init_log = os.path.join(d, "pnr/initdesign/logs/initdesign.log")
+    _write(init_log, (
+        "Finish plugin post unconditional\n"
+        '--- Ending "Innovus" (totcpu=10:00:00, real=02:30:45.125, mem=1G) ---\n'
+        "Ending\n"
+    ))
+    _touch_after(init_log, final_csv)
+    r = json.loads(make_check(audit=None)(workspace=d))
+    stage_map = {s["name"]: s for s in r["stages"]}
+    assert stage_map["INIT_DESIGN"]["runtime"] == "02:30:45.125", stage_map["INIT_DESIGN"]
+    shutil.rmtree(d)
+
+
 @test("EDA: tabulate_workspaces synthetic trial produces Title header")
 def test_tabulate_workspaces_synthetic():
     from claude_api.tools.eda.tabulate_workspaces import make_handler as make_tab
@@ -1907,6 +1975,12 @@ OFFLINE_TESTS = [
     test_eda_tools_audit_logging,
     test_scan_workspaces_skip_dirs,
     test_tabulate_workspaces_with_baseline,
+    test_check_workspace_stage_empty_string,
+    test_check_workspace_stage_none_workspace,
+    test_check_workspace_stage_whitespace_workspace,
+    test_check_workspace_stage_syn_done_midline,
+    test_check_workspace_stage_syn_done_line_start,
+    test_check_workspace_stage_pnr_runtime_fractional,
 ]
 
 QUICK_TESTS = [

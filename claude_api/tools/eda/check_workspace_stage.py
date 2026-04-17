@@ -60,8 +60,12 @@ _PNR_LADDER = [
 
 _PNR_FINISH_RE = re.compile(r"Finish plugin.*post.*unconditional")
 _SYN_FINAL_ROW_RE = re.compile(r"^final,", re.MULTILINE)
-# Innovus "Ending" line: --- Ending "Innovus" (totcpu=..., real=HH:MM:SS, mem=...) ---
-_PNR_RUNTIME_RE = re.compile(r"real\s*=\s*([0-9:]+)")
+# Innovus "Ending" line: --- Ending "Innovus" (totcpu=..., real=HH:MM:SS[.ms], mem=...) ---
+# Captures fractional seconds if present (Innovus sometimes emits "real=34:39:23.125").
+_PNR_RUNTIME_RE = re.compile(r"real\s*=\s*([0-9:.]+)")
+# Matches Done! at the start of a line (tcsh: grep "^Done!"). Optional leading
+# whitespace accommodates logs where output is slightly indented.
+_SYN_DONE_RE = re.compile(r"^\s*Done!", re.MULTILINE)
 
 # final.csv column indices (0-based) in data rows
 _CSV_SUBSTAGE_NAME_COL = 0
@@ -94,6 +98,17 @@ def _tail_has(path: str, marker: str, n: int = 2) -> bool:
         return False
     tail = "".join(lines[-n:]) if lines else ""
     return marker in tail
+
+
+def _tail_matches(path: str, pattern: "re.Pattern", n: int = 2) -> bool:
+    """Regex-anchored variant of _tail_has. Matches across the last n lines."""
+    try:
+        with open(path, "r", errors="ignore") as fh:
+            lines = fh.readlines()
+    except OSError:
+        return False
+    tail = "".join(lines[-n:]) if lines else ""
+    return bool(pattern.search(tail))
 
 
 def _file_has(path: str, pattern: "re.Pattern") -> bool:
@@ -198,7 +213,9 @@ def _analyze_syn(workspace: str):
     syn_mtime = _mtime(syn_log)
 
     # ONGOING: no "Done!" in the last 2 lines yet
-    if not _tail_has(syn_log, "Done!", n=2):
+    # Line-anchored: matches tcsh `grep "^Done!"`. Rejects mid-line occurrences
+    # like "All modules Done! 42 warnings" which shouldn't signal completion.
+    if not _tail_matches(syn_log, _SYN_DONE_RE, n=2):
         return ("ONGOING", syn_mtime, syn_log, final_csv)
 
     # Done! — validate via final.csv
@@ -256,8 +273,22 @@ def _derive_summary(stages: list):
 
 
 def make_handler(audit=None, **kwargs):
-    def check_workspace_stage(workspace: str) -> str:
+    def check_workspace_stage(workspace: str = "") -> str:
         t0 = time.time()
+
+        # Input guard: empty string silently resolves to cwd; None raises
+        # TypeError inside abspath. Both must produce a clean ok:false.
+        if not isinstance(workspace, str) or not workspace.strip():
+            if audit is not None:
+                audit.log_tool_execution(
+                    tool_name=NAME, success=False,
+                    latency_s=time.time() - t0, round_num=-1,
+                )
+            return json.dumps({
+                "ok": False,
+                "error": "workspace must be a non-empty string path",
+            })
+
         ws = os.path.abspath(workspace)
 
         if not os.path.isdir(ws):

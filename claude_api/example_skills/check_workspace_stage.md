@@ -55,9 +55,11 @@ SYN CSV plus tails one log.
   once any stage is non-SUCCESS, every later stage is NOT_AVAILABLE.
 
 ## SYN Sub-stages
-`syn_substages[]` is parsed from `syn/reports/summary_table/final.csv` in
-source order. Typical sequence: `constraints → pre_gen → syn_gen → map →
-multibit → exportnonscan → scan → post_scan_opt → finalincropt → final`.
+`syn_substages[]` appears ONLY on `stages[0]` (the SYN entry); PNR stage
+entries (`stages[1]` through `stages[7]`) do not carry this field. It is
+parsed from `syn/reports/summary_table/final.csv` in source order. Typical
+sequence: `constraints → pre_gen → syn_gen → map → multibit → exportnonscan
+→ scan → post_scan_opt → finalincropt → final`.
 **Presence of a row means that sub-stage ran to completion** (it emitted
 metrics). Each entry gives `real_runtime` (per-substage wall time) and
 `real_elapsed` (cumulative since SYN start). If `final` is in the list
@@ -74,11 +76,14 @@ SYN got through the last-listed sub-stage and stopped.
 
 ## Current-log Tail
 - `current_log_path` is the log file of `current_stage`; `current_log_tail`
-  is its last ~40 lines, capped at ~4000 chars (truncation marker appended
-  if cap hit).
+  is its last ~40 lines, hard-capped at 4000 characters INCLUDING the
+  truncation marker `\n... (truncated)` appended when the cap is hit. Very
+  long log lines may be cut mid-line; don't rely on exact line counts.
 - `""` for both when `current_status == NOT_STARTED`.
 - **Always skim the tail** — the rule-based checks can miss panic strings,
-  license errors, or oddities outside the regex patterns.
+  license errors, or oddities outside the regex patterns. If the tail shows
+  content that contradicts the tool's status (e.g. status=SUCCESS but tail
+  shows "license expired"), surface the disagreement to the user verbatim.
 
 ## Example Commands
 ```

@@ -55,7 +55,8 @@ awk -F';' '$1 ~ /^Stage|all|HEPG|Density/' /proj/.../tabulation.csv
 ## Output Format
 Tell the user:
 - Path to the written CSV.
-- `num_trials` and whether a baseline was applied.
+- `num_trials` and the `baseline_applied` boolean (true if baseline deltas
+  were appended to the CSV).
 - A 1–2 line interpretation of the preview (e.g. "Trial inc3_fixed has PLACEOPT
   WNS -0.105 vs baseline ISO").
 - Reminder that the file is semicolon-delimited — open in Excel via

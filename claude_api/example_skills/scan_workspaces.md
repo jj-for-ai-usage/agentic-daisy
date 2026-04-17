@@ -50,7 +50,8 @@ head /proj/.../ACTIVE_workspaces.rpt
 
 ## Output Format
 Tell the user:
-- How many ACTIVE / SYN / PNR were found.
+- How many ACTIVE / SYN / PNR were found. `counts.total` is the union
+  (typically SYN + PNR since a trial root contributes to at most one of each).
 - Path to `ACTIVE_workspaces.rpt`.
 - Suggested next step (usually: run `tabulate_workspaces` against the rpt file,
   optionally with a `baseline` if they want a delta comparison).
