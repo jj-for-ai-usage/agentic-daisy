@@ -12,24 +12,22 @@ under a project tree (e.g. `/proj/vendor_*/EIEX_0.1`). Always run this before
 `tabulate_workspaces` unless the user has already pointed at an existing
 `ACTIVE_workspaces.rpt`.
 
-Also use when the user asks "what trials are running?" or "is trial X still in
-PNR?" — the scan's `stage_detail` + `stage_status` answer both.
+For per-trial "what stage is this at?" questions, follow up with
+`check_workspace_stage` on the specific workspace — `scan_workspaces` only
+returns counts and the rpt file paths, not per-trial stage detail.
 
 ## Steps
 1. Confirm the `search_root` with the user if it is not obvious from the
    conversation (e.g. "scan EIEX" → ask which EIEX version / project path).
    Do not guess project paths.
 2. Call `scan_workspaces(search_root="...")`. Leave `analyze_stages=true` for
-   the default SUCCESS/ONGOING/FAIL detection; pass `false` only when the user
-   wants a fast count and no log reads.
+   the default internal stage detection (classifies active/syn/pnr correctly);
+   pass `false` only when the user wants a fast count and no log reads.
 3. Read the returned `counts`:
    - `active == 0` → warn user; suggest wrong path or no trials started yet.
    - `syn + pnr` large → offer to `tabulate_workspaces` next.
 4. Mention the three `.rpt` file paths returned in `rpt_files`. `ACTIVE` is the
    input for `tabulate_workspaces`; `SYN` / `PNR` are reference lists.
-5. If the user wants a human-readable trial label for a workspace that has none,
-   instruct them to `write_file` a `trial_name.txt` into the work directory
-   (this tool does not prompt interactively).
 
 ## Key Files
 - `<output_dir>/ACTIVE_workspaces.rpt` — one work-location path per line;
@@ -37,8 +35,6 @@ PNR?" — the scan's `stage_detail` + `stage_status` answer both.
   same trial root.
 - `<output_dir>/SYN_workspaces.rpt` — all SYN workspaces (reference only).
 - `<output_dir>/PNR_workspaces.rpt` — all PNR workspaces (reference only).
-- `<work_location>/trial_name.txt` — optional single-line human label used by
-  tabulation as the first header row.
 
 ## Example Commands
 ```

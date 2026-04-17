@@ -1383,10 +1383,14 @@ def test_check_workspace_stage_short_circuit():
 
 
 def _csv_row(name: str, real_runtime: str, real_elapsed: str) -> str:
-    """Build a 37-col final.csv data row matching the real layout.
+    """Build a 37-col final.csv data row matching the real Cadence layout.
+
+    The real CSV has 34 labeled header columns but data rows have 37 fields
+    (the trailing Version/MCPS/reports-path triple is unlabeled in the
+    header). Fixture intentionally mirrors that asymmetry.
 
     Only cols 0, 30, 32 carry meaning for check_workspace_stage; others are
-    padded with 'no_value' / zeros so row length >= 33 (tool's minimum).
+    padded with 'no_value' so row length >= 33 (tool's minimum).
     """
     # Build 33 columns: 0..32
     cols = ["no_value"] * 33
@@ -1558,8 +1562,187 @@ def test_check_workspace_stage_tail_truncated():
     r = json.loads(make_check(audit=None)(workspace=d))
     tail = r["current_log_tail"]
     assert tail.endswith("... (truncated)"), "expected truncation marker"
-    # Body portion should be at or near the 4K cap (plus the marker)
-    assert 4000 <= len(tail) <= 4100, "tail length %d out of range" % len(tail)
+    # Cap is 4000 chars INCLUDING the marker
+    assert len(tail) == 4000, "tail length %d != 4000" % len(tail)
+    shutil.rmtree(d)
+
+
+@test("EDA: check_workspace_stage stage names are in expected order")
+def test_check_workspace_stage_stage_names():
+    from claude_api.tools.eda.check_workspace_stage import make_handler as make_check
+    d = tempfile.mkdtemp()
+    r = json.loads(make_check(audit=None)(workspace=d))
+    assert [s["name"] for s in r["stages"]] == [
+        "SYN", "INIT_DESIGN", "FLOORPLAN", "PLACEOPT",
+        "CLOCK", "CLOCKOPT", "ROUTE", "ROUTEOPT",
+    ]
+    shutil.rmtree(d)
+
+
+@test("EDA: check_workspace_stage PNR stale-log guard marks NOT_AVAILABLE")
+def test_check_workspace_stage_pnr_stale_log():
+    from claude_api.tools.eda.check_workspace_stage import make_handler as make_check
+    d = tempfile.mkdtemp()
+    final_csv = _write_syn_success_chain(d)
+    # INIT_DESIGN SUCCESS, mtime strictly after final_csv
+    init_log = os.path.join(d, "pnr/initdesign/logs/initdesign.log")
+    _write(init_log, 'Finish plugin post unconditional\n--- Ending "Innovus" (real=00:10:00,) ---\nEnding\n')
+    _touch_after(init_log, final_csv)
+    # FLOORPLAN SUCCESS after init
+    fp_log = os.path.join(d, "pnr/floorplan/logs/floorplan.log")
+    _write(fp_log, 'Finish plugin post unconditional\n--- Ending "Innovus" (real=00:20:00,) ---\nEnding\n')
+    _touch_after(fp_log, init_log)
+    # PLACEOPT log that LOOKS complete but mtime is OLDER than FLOORPLAN (stale)
+    po_log = os.path.join(d, "pnr/placeopt/logs/placeopt.log")
+    _write(po_log, 'Finish plugin post unconditional\n--- Ending "Innovus" (real=00:30:00,) ---\nEnding\n')
+    fp_mt = os.path.getmtime(fp_log)
+    os.utime(po_log, (fp_mt - 10, fp_mt - 10))  # strictly older
+
+    r = json.loads(make_check(audit=None)(workspace=d))
+    stage_map = {s["name"]: s for s in r["stages"]}
+    assert stage_map["FLOORPLAN"]["status"] == "SUCCESS"
+    assert stage_map["PLACEOPT"]["status"] == "NOT_AVAILABLE", "stale-log guard failed"
+    shutil.rmtree(d)
+
+
+@test("EDA: check_workspace_stage PNR FAIL when Ending but no unconditional")
+def test_check_workspace_stage_pnr_fail_no_unconditional():
+    from claude_api.tools.eda.check_workspace_stage import make_handler as make_check
+    d = tempfile.mkdtemp()
+    final_csv = _write_syn_success_chain(d)
+    # INIT_DESIGN: Ending present but no "Finish plugin.*post.*unconditional"
+    init_log = os.path.join(d, "pnr/initdesign/logs/initdesign.log")
+    _write(init_log, 'ERROR: init failed\n--- Ending "Innovus" (real=00:05:00,) ---\nEnding\n')
+    _touch_after(init_log, final_csv)
+    r = json.loads(make_check(audit=None)(workspace=d))
+    stage_map = {s["name"]: s for s in r["stages"]}
+    assert stage_map["INIT_DESIGN"]["status"] == "FAIL"
+    assert r["current_stage"] == "INIT_DESIGN"
+    assert r["current_status"] == "FAIL"
+    assert r["current_log_path"].endswith("initdesign.log")
+    assert "ERROR: init failed" in r["current_log_tail"]
+    # Later stages short-circuit
+    assert stage_map["FLOORPLAN"]["status"] == "NOT_AVAILABLE"
+    shutil.rmtree(d)
+
+
+@test("EDA: check_workspace_stage partial PNR chain (missing mid-ladder stage)")
+def test_check_workspace_stage_partial_chain():
+    from claude_api.tools.eda.check_workspace_stage import make_handler as make_check
+    d = tempfile.mkdtemp()
+    final_csv = _write_syn_success_chain(d)
+    # INIT_DESIGN SUCCESS
+    init_log = os.path.join(d, "pnr/initdesign/logs/initdesign.log")
+    _write(init_log, 'Finish plugin post unconditional\n--- Ending "Innovus" (real=00:10:00,) ---\nEnding\n')
+    _touch_after(init_log, final_csv)
+    # FLOORPLAN log is MISSING entirely; PLACEOPT log EXISTS (would be stale anyway)
+    po_log = os.path.join(d, "pnr/placeopt/logs/placeopt.log")
+    _write(po_log, 'Finish plugin post unconditional\n--- Ending "Innovus" (real=00:30:00,) ---\nEnding\n')
+    _touch_after(po_log, init_log)
+
+    r = json.loads(make_check(audit=None)(workspace=d))
+    stage_map = {s["name"]: s for s in r["stages"]}
+    assert stage_map["INIT_DESIGN"]["status"] == "SUCCESS"
+    assert stage_map["FLOORPLAN"]["status"] == "NOT_AVAILABLE"
+    # PLACEOPT must be NOT_AVAILABLE because FLOORPLAN wasn't SUCCESS
+    assert stage_map["PLACEOPT"]["status"] == "NOT_AVAILABLE"
+    assert r["current_stage"] == "INIT_DESIGN"
+    shutil.rmtree(d)
+
+
+class _RecordingAudit:
+    """Minimal audit stub that records every log_tool_execution call."""
+    def __init__(self):
+        self.calls = []
+    def log_tool_execution(self, **kw):
+        self.calls.append(kw)
+
+
+@test("EDA: all three tools emit audit event on success AND failure")
+def test_eda_tools_audit_logging():
+    from claude_api.tools.eda.scan_workspaces import make_handler as make_scan
+    from claude_api.tools.eda.tabulate_workspaces import make_handler as make_tab
+    from claude_api.tools.eda.check_workspace_stage import make_handler as make_check
+
+    # scan_workspaces: success + failure
+    a = _RecordingAudit()
+    d = tempfile.mkdtemp()
+    make_scan(audit=a)(search_root=d)
+    make_scan(audit=a)(search_root="/no/such/path")
+    assert len(a.calls) == 2
+    assert a.calls[0]["tool_name"] == "scan_workspaces" and a.calls[0]["success"] is True
+    assert a.calls[1]["success"] is False
+
+    # tabulate_workspaces: all three failure paths + one success
+    a2 = _RecordingAudit()
+    tab = make_tab(audit=a2)
+    # Failure: both inputs
+    r = json.loads(tab(workspace_list_file="/x", work_dirs=["/y"]))
+    assert r["ok"] is False
+    # Failure: neither input
+    r = json.loads(tab())
+    assert r["ok"] is False
+    # Failure: missing file
+    r = json.loads(tab(workspace_list_file="/no/such/file.rpt"))
+    assert r["ok"] is False
+    # Success: empty file
+    empty = os.path.join(d, "empty.rpt"); open(empty, "w").close()
+    r = json.loads(tab(workspace_list_file=empty))
+    assert r["ok"] is True
+    assert len(a2.calls) == 4, "got %d calls: %s" % (len(a2.calls), a2.calls)
+    successes = [c["success"] for c in a2.calls]
+    assert successes == [False, False, False, True], successes
+
+    # check_workspace_stage: success + failure
+    a3 = _RecordingAudit()
+    make_check(audit=a3)(workspace=d)
+    make_check(audit=a3)(workspace="/no/such/path")
+    assert len(a3.calls) == 2
+    assert [c["success"] for c in a3.calls] == [True, False]
+
+    shutil.rmtree(d)
+
+
+@test("EDA: scan_workspaces prunes skip-dirs (scripts, gns_*, results, ...)")
+def test_scan_workspaces_skip_dirs():
+    from claude_api.tools.eda.scan_workspaces import make_handler as make_scan
+    d = tempfile.mkdtemp()
+    # A "real" workspace
+    real = os.path.join(d, "real_trial/PNR/blk/iflowblocks/blk/imp/real_trial")
+    os.makedirs(real)
+    # Same iflowblocks pattern but under skip-dirs that must be pruned
+    for skip in ("scripts", "gns_run1", "invs_snap", "results", "snapshot", "genus2"):
+        decoy = os.path.join(d, skip, "hidden_trial/PNR/blk/iflowblocks/blk/imp/hidden_trial")
+        os.makedirs(decoy)
+    r = json.loads(make_scan(audit=None)(search_root=d, analyze_stages=False))
+    assert r["ok"] is True
+    # Only the "real" workspace should appear
+    assert r["counts"]["total"] == 1, r["counts"]
+    with open(r["rpt_files"]["active"]) as fh:
+        lines = [ln.strip() for ln in fh if ln.strip()]
+    assert len(lines) == 1 and "real_trial" in lines[0]
+    shutil.rmtree(d)
+
+
+@test("EDA: tabulate_workspaces with baseline sets baseline_applied and adds compare section")
+def test_tabulate_workspaces_with_baseline():
+    from claude_api.tools.eda.tabulate_workspaces import make_handler as make_tab
+    d = tempfile.mkdtemp()
+    trial_a = os.path.join(d, "trialA"); os.makedirs(trial_a)
+    trial_b = os.path.join(d, "trialB"); os.makedirs(trial_b)
+    out = os.path.join(d, "tab.csv")
+    r = json.loads(make_tab(audit=None)(
+        work_dirs=[trial_a, trial_b], baseline=trial_a, output_file=out,
+    ))
+    assert r["ok"] is True
+    assert r["baseline_applied"] is True
+    assert r["num_trials"] == 2
+    with open(out) as fh:
+        content = fh.read()
+    # Baseline column 1 should be the baseline trial (trialA)
+    first_line = content.splitlines()[0]
+    # Format: "Title;<trialA-label>;<trialB-label>"
+    assert "trialA" in first_line, first_line
     shutil.rmtree(d)
 
 
@@ -1717,6 +1900,13 @@ OFFLINE_TESTS = [
     test_check_workspace_stage_tail,
     test_check_workspace_stage_tail_not_started,
     test_check_workspace_stage_tail_truncated,
+    test_check_workspace_stage_stage_names,
+    test_check_workspace_stage_pnr_stale_log,
+    test_check_workspace_stage_pnr_fail_no_unconditional,
+    test_check_workspace_stage_partial_chain,
+    test_eda_tools_audit_logging,
+    test_scan_workspaces_skip_dirs,
+    test_tabulate_workspaces_with_baseline,
 ]
 
 QUICK_TESTS = [

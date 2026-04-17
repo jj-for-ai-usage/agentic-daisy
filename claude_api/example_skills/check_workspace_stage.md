@@ -1,6 +1,6 @@
 ---
 name: check_workspace_stage
-summary: Report where a single Cadence workspace is in the SYN/PNR flow (current stage, status, SYN sub-stages, per-stage runtime, current log tail)
+summary: Report current SYN/PNR stage of one workspace, with sub-stages, runtimes, and current-log tail
 trigger: "what stage", "where is trial", "flow status", "is it done", "which stage", "current stage", "check progress", "status.rpt", "syn substages", "runtime", "is it stuck"
 ---
 

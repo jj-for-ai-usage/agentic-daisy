@@ -1,6 +1,6 @@
 ---
 name: tabulate_workspaces
-summary: Extract SYN/PNR metrics from EDA workspaces into a semicolon-delimited CSV (Excel-paste ready), with optional baseline deltas
+summary: Extract SYN/PNR metrics from EDA workspaces into a semicolon CSV, with optional baseline deltas
 trigger: "tabulate", "compare trials", "metrics for these workspaces", "tabulation.csv", "timing summary", "baseline compare", "vs baseline", "WNS TNS summary"
 ---
 

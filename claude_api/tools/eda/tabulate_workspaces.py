@@ -59,27 +59,35 @@ def make_handler(audit=None, **kwargs):
         t0 = time.time()
         work_dirs = work_dirs or []
 
+        def _audit_and_return(payload: dict, success: bool) -> str:
+            if audit is not None:
+                audit.log_tool_execution(
+                    tool_name=NAME, success=success,
+                    latency_s=time.time() - t0, round_num=-1,
+                )
+            return json.dumps(payload)
+
         # --- Resolve input: exactly one of workspace_list_file / work_dirs ---
         if workspace_list_file and work_dirs:
-            return json.dumps({
+            return _audit_and_return({
                 "ok": False,
                 "error": "Provide either workspace_list_file or work_dirs, not both.",
-            })
+            }, success=False)
         if not workspace_list_file and not work_dirs:
-            return json.dumps({
+            return _audit_and_return({
                 "ok": False,
                 "error": "Must provide workspace_list_file or work_dirs.",
-            })
+            }, success=False)
 
         source_label = ""
         try:
             if workspace_list_file:
                 workspace_list_file = os.path.abspath(workspace_list_file)
                 if not os.path.isfile(workspace_list_file):
-                    return json.dumps({
+                    return _audit_and_return({
                         "ok": False,
                         "error": "workspace_list_file not found: %s" % workspace_list_file,
-                    })
+                    }, success=False)
                 work_dirs = _load_dirs_from_file(workspace_list_file)
                 source_label = workspace_list_file
                 default_out_dir = os.path.dirname(workspace_list_file)

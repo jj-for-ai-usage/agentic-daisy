@@ -152,17 +152,38 @@ def _extract_pnr_runtime(log_path: str):
 
 def _tail_file(log_path: str, n_lines: int = _TAIL_LINES,
                char_cap: int = _TAIL_CHAR_CAP) -> str:
+    """Read last ~n_lines of a file without loading the whole file into memory.
+
+    Seeks from the end in a bounded window, splits on newline, keeps the last
+    n_lines. Cadence logs routinely exceed a GB; readlines() would OOM.
+    """
     if not log_path or not os.path.isfile(log_path):
         return ""
+    # Read a window that's comfortably larger than char_cap so n_lines fits.
+    # Each log line is typically < 200 chars; 4x char_cap gives plenty of headroom.
+    window = max(char_cap * 4, 16_384)
     try:
-        with open(log_path, "r", errors="ignore") as fh:
-            lines = fh.readlines()
+        size = os.path.getsize(log_path)
+        read_from = max(0, size - window)
+        with open(log_path, "rb") as fh:
+            fh.seek(read_from)
+            data = fh.read()
     except OSError as exc:
         LOG.debug("tail read failed for %s: %s", log_path, exc)
         return ""
+    text = data.decode("utf-8", errors="ignore")
+    # If we started mid-line, drop the partial first line.
+    if read_from > 0:
+        nl = text.find("\n")
+        if nl >= 0:
+            text = text[nl + 1:]
+    lines = text.splitlines(keepends=True)
     tail = "".join(lines[-n_lines:])
     if len(tail) > char_cap:
-        tail = tail[-char_cap:] + "\n... (truncated)"
+        # Truncate to fit within char_cap INCLUDING the marker.
+        marker = "\n... (truncated)"
+        keep = max(0, char_cap - len(marker))
+        tail = tail[-keep:] + marker
     return tail
 
 
