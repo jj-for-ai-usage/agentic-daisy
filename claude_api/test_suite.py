@@ -543,7 +543,7 @@ def test_session_sanitize():
         shutil.rmtree(d)
 
 
-@test("Built-in tools: all 27 registered")
+@test("Built-in tools: all 28 registered")
 def test_builtin_tools():
     from claude_api.built_in_tools import create_default_registry
     from claude_api.config import DaisyConfig
@@ -569,8 +569,8 @@ def test_builtin_tools():
         "create_task", "update_task", "list_tasks", "get_task",
         # batch (3)
         "submit_batch", "check_batch", "get_batch_results",
-        # eda (2)
-        "scan_workspaces", "tabulate_workspaces",
+        # eda (3)
+        "scan_workspaces", "tabulate_workspaces", "check_workspace_stage",
     }
     assert names == expected, "Missing: %s  Extra: %s" % (expected - names, names - expected)
 
@@ -1242,6 +1242,146 @@ def test_tabulate_workspaces_both_inputs():
     shutil.rmtree(d)
 
 
+def _write(path: str, content: str = ""):
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with open(path, "w") as fh:
+        fh.write(content)
+
+
+def _touch_after(path: str, reference_path: str):
+    """Ensure path's mtime is strictly newer than reference_path's."""
+    ref_mt = os.path.getmtime(reference_path)
+    os.utime(path, (ref_mt + 5, ref_mt + 5))
+
+
+@test("EDA: check_workspace_stage missing workspace returns ok=False")
+def test_check_workspace_stage_missing():
+    from claude_api.tools.eda.check_workspace_stage import make_handler as make_check
+    handler = make_check(audit=None)
+    r = json.loads(handler(workspace="/no/such/path"))
+    assert r["ok"] is False
+    assert "workspace" in r["error"]
+
+
+@test("EDA: check_workspace_stage empty workspace reports NOT_STARTED")
+def test_check_workspace_stage_empty():
+    from claude_api.tools.eda.check_workspace_stage import make_handler as make_check
+    d = tempfile.mkdtemp()
+    handler = make_check(audit=None)
+    r = json.loads(handler(workspace=d))
+    assert r["ok"] is True, r
+    assert r["current_status"] == "NOT_STARTED"
+    assert r["current_stage"] is None
+    assert r["last_completed"] is None
+    assert len(r["stages"]) == 8
+    assert all(s["status"] == "NOT_AVAILABLE" for s in r["stages"])
+    shutil.rmtree(d)
+
+
+@test("EDA: check_workspace_stage SYN ONGOING")
+def test_check_workspace_stage_syn_ongoing():
+    from claude_api.tools.eda.check_workspace_stage import make_handler as make_check
+    d = tempfile.mkdtemp()
+    _write(os.path.join(d, "syn/logs/syn.log"), "Starting synthesis...\nInfo: loading design\n")
+    r = json.loads(make_check(audit=None)(workspace=d))
+    assert r["current_stage"] == "SYN"
+    assert r["current_status"] == "ONGOING"
+    assert r["last_completed"] is None
+    shutil.rmtree(d)
+
+
+@test("EDA: check_workspace_stage SYN SUCCESS requires valid final.csv")
+def test_check_workspace_stage_syn_success():
+    from claude_api.tools.eda.check_workspace_stage import make_handler as make_check
+    d = tempfile.mkdtemp()
+    syn_log = os.path.join(d, "syn/logs/syn.log")
+    _write(syn_log, "Running...\nDone!\n")
+    final_csv = os.path.join(d, "syn/reports/summary_table/final.csv")
+    _write(final_csv, "Metric,slack\nfinal,0.123\n")
+    _touch_after(final_csv, syn_log)
+    r = json.loads(make_check(audit=None)(workspace=d))
+    assert r["current_status"] == "SUCCESS", r
+    assert r["current_stage"] == "SYN"
+    assert r["last_completed"] == "SYN"
+    shutil.rmtree(d)
+
+
+@test("EDA: check_workspace_stage SYN FAIL when csv older than log")
+def test_check_workspace_stage_syn_fail_stale_csv():
+    from claude_api.tools.eda.check_workspace_stage import make_handler as make_check
+    d = tempfile.mkdtemp()
+    final_csv = os.path.join(d, "syn/reports/summary_table/final.csv")
+    _write(final_csv, "Metric,slack\nfinal,0.123\n")
+    # make log NEWER than the csv (stale csv scenario)
+    syn_log = os.path.join(d, "syn/logs/syn.log")
+    _write(syn_log, "Done!\n")
+    _touch_after(syn_log, final_csv)
+    r = json.loads(make_check(audit=None)(workspace=d))
+    assert r["current_status"] == "FAIL"
+    assert r["current_stage"] == "SYN"
+    shutil.rmtree(d)
+
+
+@test("EDA: check_workspace_stage PLACEOPT ONGOING with full prior chain")
+def test_check_workspace_stage_placeopt_ongoing():
+    from claude_api.tools.eda.check_workspace_stage import make_handler as make_check
+    d = tempfile.mkdtemp()
+
+    # SYN: SUCCESS
+    syn_log = os.path.join(d, "syn/logs/syn.log")
+    _write(syn_log, "Done!\n")
+    final_csv = os.path.join(d, "syn/reports/summary_table/final.csv")
+    _write(final_csv, "final,0.1\n")
+    _touch_after(final_csv, syn_log)
+
+    # INIT_DESIGN: SUCCESS
+    init_log = os.path.join(d, "pnr/initdesign/logs/initdesign.log")
+    _write(init_log, "Finish plugin post unconditional\nEnding\n")
+    _touch_after(init_log, final_csv)
+
+    # FLOORPLAN: SUCCESS
+    fp_log = os.path.join(d, "pnr/floorplan/logs/floorplan.log")
+    _write(fp_log, "Finish plugin post unconditional\nEnding\n")
+    _touch_after(fp_log, init_log)
+
+    # PLACEOPT: ONGOING (no Ending yet)
+    po_log = os.path.join(d, "pnr/placeopt/logs/placeopt.log")
+    _write(po_log, "Starting placeopt\n")
+    _touch_after(po_log, fp_log)
+
+    r = json.loads(make_check(audit=None)(workspace=d))
+    assert r["current_stage"] == "PLACEOPT", r
+    assert r["current_status"] == "ONGOING"
+    assert r["last_completed"] == "FLOORPLAN"
+    statuses = {s["name"]: s["status"] for s in r["stages"]}
+    assert statuses["SYN"] == "SUCCESS"
+    assert statuses["INIT_DESIGN"] == "SUCCESS"
+    assert statuses["FLOORPLAN"] == "SUCCESS"
+    assert statuses["PLACEOPT"] == "ONGOING"
+    assert statuses["CLOCK"] == "NOT_AVAILABLE"
+    assert statuses["ROUTEOPT"] == "NOT_AVAILABLE"
+    shutil.rmtree(d)
+
+
+@test("EDA: check_workspace_stage short-circuits after SYN FAIL")
+def test_check_workspace_stage_short_circuit():
+    from claude_api.tools.eda.check_workspace_stage import make_handler as make_check
+    d = tempfile.mkdtemp()
+    # SYN FAIL: Done! but no final.csv
+    _write(os.path.join(d, "syn/logs/syn.log"), "Done!\n")
+    # Valid-looking initdesign log that should be ignored
+    _write(
+        os.path.join(d, "pnr/initdesign/logs/initdesign.log"),
+        "Finish plugin post unconditional\nEnding\n",
+    )
+    r = json.loads(make_check(audit=None)(workspace=d))
+    assert r["current_stage"] == "SYN"
+    assert r["current_status"] == "FAIL"
+    statuses = {s["name"]: s["status"] for s in r["stages"]}
+    assert statuses["INIT_DESIGN"] == "NOT_AVAILABLE", "short-circuit failed"
+    shutil.rmtree(d)
+
+
 @test("EDA: tabulate_workspaces synthetic trial produces Title header")
 def test_tabulate_workspaces_synthetic():
     from claude_api.tools.eda.tabulate_workspaces import make_handler as make_tab
@@ -1382,6 +1522,13 @@ OFFLINE_TESTS = [
     test_tabulate_workspaces_empty,
     test_tabulate_workspaces_both_inputs,
     test_tabulate_workspaces_synthetic,
+    test_check_workspace_stage_missing,
+    test_check_workspace_stage_empty,
+    test_check_workspace_stage_syn_ongoing,
+    test_check_workspace_stage_syn_success,
+    test_check_workspace_stage_syn_fail_stale_csv,
+    test_check_workspace_stage_placeopt_ongoing,
+    test_check_workspace_stage_short_circuit,
 ]
 
 QUICK_TESTS = [

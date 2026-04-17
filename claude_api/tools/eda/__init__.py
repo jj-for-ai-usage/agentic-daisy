@@ -5,9 +5,9 @@ Ported (DB-free) from github.com/jj-for-ai-usage/DAISY.
 """
 from __future__ import annotations
 
-from . import scan_workspaces, tabulate_workspaces
+from . import scan_workspaces, tabulate_workspaces, check_workspace_stage
 
-ALL_TOOLS = [scan_workspaces, tabulate_workspaces]
+ALL_TOOLS = [scan_workspaces, tabulate_workspaces, check_workspace_stage]
 
 
 def register(config, registry, audit=None, **kwargs):
