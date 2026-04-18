@@ -3,11 +3,12 @@ from __future__ import annotations
 
 import argparse
 import atexit
+import glob
 import logging
 import os
 import readline
 import sys
-from typing import Any, Optional
+from typing import Any, List, Optional
 
 from .agent_loop import run_agent_loop
 from .audit import AuditLogger
@@ -182,15 +183,75 @@ def main() -> None:
             audit.log_session_end()
 
 
+def _path_complete(text: str, state: int) -> Optional[str]:
+    """readline completer: glob-based filesystem path completion.
+
+    Supports absolute paths, paths relative to cwd, and `~`/`~user`
+    expansion. Directory matches are returned with a trailing `/` so
+    repeated Tabs can descend into them. All matches for a given line
+    are computed on state==0 and cached on the function object.
+    """
+    if state == 0:
+        expanded = os.path.expanduser(text) if text.startswith("~") else text
+        try:
+            raw = glob.glob(expanded + "*")
+        except (OSError, ValueError):
+            raw = []
+        matches: List[str] = []
+        for p in raw:
+            display = p
+            # Re-fold ~ back in so the completed line keeps the user's prefix.
+            if text.startswith("~"):
+                home = os.path.expanduser("~")
+                if display == home:
+                    display = "~"
+                elif display.startswith(home + os.sep):
+                    display = "~" + display[len(home):]
+            if os.path.isdir(p) and not display.endswith(os.sep):
+                display = display + "/"
+            matches.append(display)
+        matches.sort()
+        _path_complete.cache = matches  # type: ignore[attr-defined]
+    cache = getattr(_path_complete, "cache", [])
+    if state < len(cache):
+        return cache[state]
+    return None
+
+
 def _init_repl_history(path: str) -> None:
-    """Enable readline history persistence for the interactive REPL.
+    """Enable readline history persistence and path-completion for the REPL.
 
     Importing `readline` (done at module top) is what gives `input()`
     arrow-key navigation and emacs line editing — this function adds
-    cross-session recall by reading and writing a history file.
+    cross-session history recall plus Tab-completion on filesystem paths
+    so pasted partial paths behave like in a normal shell.
     Silently degrades to in-session-only history if the file system
-    is read-only or otherwise uncooperative.
+    is read-only or otherwise uncooperative; path completion is wired
+    up independently of history so a history-file failure doesn't
+    disable Tab.
     """
+    # --- Tab completion on filesystem paths ---
+    try:
+        # Shell-like word delimiters so the completer only sees the
+        # current whitespace-delimited word. Notably: no slashes, dots,
+        # or dashes — those are legitimate path characters.
+        readline.set_completer_delims(" \t\n")
+        readline.set_completer(_path_complete)
+        # GNU readline uses `tab: complete`; libedit (macOS) uses a
+        # different syntax, so try both and ignore failures.
+        try:
+            readline.parse_and_bind("tab: complete")
+        except Exception:
+            pass
+        if "libedit" in getattr(readline, "__doc__", "") or "":
+            try:
+                readline.parse_and_bind("bind ^I rl_complete")
+            except Exception:
+                pass
+    except Exception as exc:
+        LOG.debug("REPL tab-completion disabled (%s)", exc)
+
+    # --- History file ---
     try:
         os.makedirs(os.path.dirname(path), mode=0o700, exist_ok=True)
         try:
