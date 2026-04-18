@@ -155,6 +155,34 @@ Do NOT close with a multi-page executive summary. Do NOT `cat > /tmp/...`
 a heredoc dump of your own analysis — your previous turn already contains
 it; rewriting it just burns tokens.
 
+## Gotcha: baseline work-location can be a trial root
+
+If `tabulate_workspaces` returns no SYN data for one of the paths, do
+NOT conclude "this workspace lacks a final.csv". The user often points
+at a trial root whose SYN data is nested under
+`PNR/<block>/iflowblocks/<block>/imp/<run>/syn/reports/final.csv` — five
+directories deeper than the canonical `<root>/syn/reports/` layout. The
+tabulator deep-searches as a fallback now, but if it still comes back
+empty, run:
+
+```
+run_command("find <path> -name final.csv -path '*/syn/reports/*'")
+```
+
+before giving up. Then either point the tabulator at the deeper path or
+symlink-resolve the expected location. NEVER tell the user that
+`tabulate_workspaces` "only handles PNR" or "doesn't support synthesis"
+— it parses both SYN `final.csv` (via `_parse_syn_csv`) and PNR
+per-stage QoR from the same call.
+
+## Do not create a duplicate tool
+
+If the first tabulate call produces thin results, the answer is NOT to
+`create_tool` a parallel Genus-CSV comparator. The tabulator already
+reads SYN `final.csv` and emits per-metric deltas. Creating a narrower
+second tool doubles maintenance for the AE. Fix the input path or the
+tabulator — don't route around it.
+
 ## What NOT to Do (Lessons from Past Sessions)
 
 - Do not start with `directory_tree` + `find` + `grep` exploring for

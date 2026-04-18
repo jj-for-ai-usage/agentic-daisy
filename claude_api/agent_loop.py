@@ -101,6 +101,41 @@ def _make_cache_key(tool_name: str, tool_input: dict) -> str:
     return tool_name + ":" + json.dumps(tool_input, sort_keys=True)
 
 
+def _repair_orphan_tool_results(history: List[Dict[str, Any]]) -> int:
+    """Drop tool_result blocks that have no matching tool_use in the
+    immediately-preceding assistant message. Returns number of blocks
+    removed. Safe to call multiple times — idempotent after the first
+    successful repair."""
+    removed = 0
+    for i, msg in enumerate(history):
+        if msg.get("role") != "user" or not isinstance(msg.get("content"), list):
+            continue
+        prev = history[i - 1] if i > 0 else None
+        prev_ids = set()
+        if prev and prev.get("role") == "assistant" and isinstance(
+            prev.get("content"), list,
+        ):
+            for b in prev["content"]:
+                if isinstance(b, dict) and b.get("type") == "tool_use":
+                    prev_ids.add(b.get("id"))
+        new_blocks = []
+        for b in msg["content"]:
+            if isinstance(b, dict) and b.get("type") == "tool_result":
+                if b.get("tool_use_id") in prev_ids:
+                    new_blocks.append(b)
+                else:
+                    removed += 1
+            else:
+                new_blocks.append(b)
+        msg["content"] = new_blocks
+    # Drop now-empty user messages so we don't send empty content arrays.
+    history[:] = [
+        m for m in history
+        if not (m.get("role") == "user" and m.get("content") == [])
+    ]
+    return removed
+
+
 def run_agent_loop(
     config: DaisyConfig,
     user_message: str,
@@ -128,6 +163,11 @@ def run_agent_loop(
 
     # Per-turn tool result cache (read-only tools only)
     tool_cache: Dict[str, str] = {}
+
+    # One orphan-tool_result auto-heal per run_agent_loop call — if the
+    # first heal didn't fix it, re-trying is unlikely to help and we'd
+    # rather surface the error than loop.
+    orphan_healed = False
 
     # Conversation compactor (lazy import to avoid circular deps)
     from .compaction import ConversationCompactor
@@ -189,6 +229,23 @@ def run_agent_loop(
                 )
                 if compacted:
                     continue  # retry with compacted history
+            # Recover from orphan tool_result blocks (usually a side-effect
+            # of compaction eating the paired tool_use). Try exactly once
+            # per run_agent_loop call; repeated 400s mean the heal didn't
+            # help and we should surface the error.
+            if (
+                exc.status_code == 400
+                and "unexpected `tool_use_id`" in str(exc)
+                and not orphan_healed
+            ):
+                removed = _repair_orphan_tool_results(conversation_history)
+                orphan_healed = True
+                LOG.warning(
+                    "Healed %d orphan tool_result block(s); retrying.",
+                    removed,
+                )
+                if removed > 0:
+                    continue
             return "[Daisy: API error %d after retries — %s]" % (
                 exc.status_code, exc,
             )

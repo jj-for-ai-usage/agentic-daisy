@@ -2086,6 +2086,101 @@ def test_tabulate_workspaces_synthetic():
     shutil.rmtree(d)
 
 
+@test("EDA: _find_syn_csv resolves deep trial-root layout")
+def test_find_syn_csv_deep_layout():
+    """A user passes the trial root — the SYN final.csv lives five
+    directories below, under PNR/<block>/iflowblocks/<block>/imp/<run>/
+    syn/reports/. The shallow glob misses it; the deep fallback must
+    catch it. Regresses the baseline-vs-t_032 session bug (F1)."""
+    from claude_api.tools.eda.tabulator import _find_syn_csv
+    d = tempfile.mkdtemp()
+    try:
+        # Shallow layout: nothing at <root>/syn/
+        # Deep layout: <root>/PNR/block/iflowblocks/block/imp/inc/syn/reports/final.csv
+        deep_dir = os.path.join(
+            d, "PNR", "cip_eiex", "iflowblocks", "cip_eiex", "imp", "inc",
+            "syn", "reports",
+        )
+        os.makedirs(deep_dir)
+        deep_csv = os.path.join(deep_dir, "final.csv")
+        with open(deep_csv, "w") as fh:
+            fh.write("stage,slack\nfinal,-0.420\n")
+
+        got = _find_syn_csv(d)
+        assert got is not None, "deep-glob fallback failed to find the CSV"
+        assert os.path.samefile(got, deep_csv), (
+            "expected %s, got %s" % (deep_csv, got)
+        )
+    finally:
+        shutil.rmtree(d)
+
+
+@test("agent_loop: _repair_orphan_tool_results drops unpaired tool_result")
+def test_repair_orphan_tool_results():
+    """A compacted conversation can land on a user message whose
+    tool_result blocks have no matching tool_use in the previous
+    assistant message. _repair_orphan_tool_results must drop exactly
+    those blocks, leaving legitimate pairs intact. Regresses the
+    crash-on-400 session bug (F4b)."""
+    from claude_api.agent_loop import _repair_orphan_tool_results
+    history = [
+        {"role": "user", "content": "[Conversation Summary] ..."},
+        {
+            "role": "assistant",
+            "content": [
+                {"type": "text", "text": "Understood."},
+                {"type": "tool_use", "id": "toolu_KEEP",
+                 "name": "read_file", "input": {}},
+            ],
+        },
+        {
+            "role": "user",
+            "content": [
+                # Legitimate — paired with toolu_KEEP above.
+                {"type": "tool_result", "tool_use_id": "toolu_KEEP",
+                 "content": "file contents"},
+                # Orphan — no matching tool_use anywhere.
+                {"type": "tool_result", "tool_use_id": "toolu_ORPHAN",
+                 "content": "stale result"},
+            ],
+        },
+    ]
+    removed = _repair_orphan_tool_results(history)
+    assert removed == 1, "expected 1 orphan dropped, got %d" % removed
+    survivors = history[-1]["content"]
+    ids = [b["tool_use_id"] for b in survivors
+           if isinstance(b, dict) and b.get("type") == "tool_result"]
+    assert ids == ["toolu_KEEP"], "wrong survivors: %s" % ids
+
+    # Idempotent: second call is a no-op.
+    removed2 = _repair_orphan_tool_results(history)
+    assert removed2 == 0, "second call should find nothing to fix"
+
+
+@test("compaction: boundary skips tool_result user messages")
+def test_compaction_skips_tool_result_boundary():
+    """If the _KEEP_RECENT window lands on a tool_result user message,
+    the boundary logic must advance past it — otherwise summarization
+    eats the paired tool_use and the next API call 400s. Regresses
+    the compactor bug (F4a)."""
+    from claude_api.compaction import _is_tool_result_message
+    # Real user input — not a tool_result.
+    real = {"role": "user", "content": "hello"}
+    assert _is_tool_result_message(real) is False
+
+    # Assistant message — not a user at all.
+    assistant = {"role": "assistant", "content": [
+        {"type": "text", "text": "hi"}
+    ]}
+    assert _is_tool_result_message(assistant) is False
+
+    # Tool-result echo — the dangerous case.
+    echo = {"role": "user", "content": [
+        {"type": "tool_result", "tool_use_id": "toolu_X", "content": "..."}
+    ]}
+    assert _is_tool_result_message(echo) is True
+
+
 # ── Online Tests (API key required) ───────────────────────
 
 @test("Online: basic API call (no tools)")
@@ -2203,6 +2298,9 @@ OFFLINE_TESTS = [
     test_tabulate_workspaces_empty,
     test_tabulate_workspaces_both_inputs,
     test_tabulate_workspaces_synthetic,
+    test_find_syn_csv_deep_layout,
+    test_repair_orphan_tool_results,
+    test_compaction_skips_tool_result_boundary,
     test_check_workspace_stage_missing,
     test_check_workspace_stage_empty,
     test_check_workspace_stage_syn_ongoing,

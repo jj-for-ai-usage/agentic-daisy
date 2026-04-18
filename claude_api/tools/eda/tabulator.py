@@ -2336,11 +2336,19 @@ def _parse_path_info(work_dir: str) -> Tuple[str, str, str]:
 
 def _find_syn_csv(work_dir: str) -> Optional[str]:
     """
-    Find the most recently modified final.csv under work_dir/syn/reports/*/
-    Returns None if no CSV is found.
+    Find the most recently modified final.csv under work_dir.
+
+    Tries <work_dir>/syn/reports/**/final.csv first (the canonical layout
+    when work_dir is already the SYN work-location). Falls back to
+    <work_dir>/**/syn/reports/**/final.csv so trial roots whose SYN data
+    is nested under PNR/<block>/iflowblocks/<block>/imp/<run>/syn/reports/
+    still resolve. Returns None if nothing matches.
     """
-    pattern = os.path.join(work_dir, "syn", "reports", "**", "final.csv")
-    matches = glob.glob(pattern, recursive=True)
+    shallow = os.path.join(work_dir, "syn", "reports", "**", "final.csv")
+    matches = glob.glob(shallow, recursive=True)
+    if not matches:
+        deep = os.path.join(work_dir, "**", "syn", "reports", "**", "final.csv")
+        matches = glob.glob(deep, recursive=True)
     if not matches:
         return None
     return max(matches, key=os.path.getmtime)

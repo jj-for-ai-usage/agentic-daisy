@@ -61,10 +61,16 @@ class ConversationCompactor:
             return False
 
         # We replace the prefix with [user: summary, assistant: ack], so the
-        # first message in `to_keep` must be a user message to preserve role
-        # alternation. Grow the keep window by one if needed.
+        # first message in `to_keep` must be a plain-text user message —
+        # NOT a tool_result echo, because the tool_use it pairs with lives
+        # in `to_summarize` and will be eaten by summarization, leaving an
+        # orphan tool_use_id that the API rejects with 400. Grow the keep
+        # window past both non-user messages AND tool_result user messages.
         keep_count = _KEEP_RECENT
-        while keep_count < len(history) and history[-keep_count].get("role") != "user":
+        while keep_count < len(history) and (
+            history[-keep_count].get("role") != "user"
+            or _is_tool_result_message(history[-keep_count])
+        ):
             keep_count += 1
         if keep_count >= len(history):
             # Whole history is to_keep; nothing left to summarize.
@@ -159,3 +165,18 @@ def _truncate(text: str, max_len: int) -> str:
     if len(text) <= max_len:
         return text
     return text[:max_len] + "..."
+
+
+def _is_tool_result_message(msg: Dict[str, Any]) -> bool:
+    """True if this user message carries a tool_result echo rather than
+    real user input. Splitting on one of these during compaction
+    orphans the paired tool_use and yields a 400 from the API."""
+    if msg.get("role") != "user":
+        return False
+    content = msg.get("content")
+    if isinstance(content, list):
+        return any(
+            isinstance(b, dict) and b.get("type") == "tool_result"
+            for b in content
+        )
+    return False
