@@ -2,7 +2,10 @@
 from __future__ import annotations
 
 import argparse
+import atexit
 import logging
+import os
+import readline
 import sys
 from typing import Any, Optional
 
@@ -11,7 +14,7 @@ from .audit import AuditLogger
 from .built_in_tools import build_default_system_prompt, create_default_registry
 from .config import (
     DaisyConfig, DEFAULT_MODEL, DEFAULT_MAX_TOKENS,
-    DEFAULT_MEMORY_DIR, DEFAULT_LOG_DIR,
+    DEFAULT_MEMORY_DIR, DEFAULT_LOG_DIR, DEFAULT_REPL_HISTORY,
 )
 from .tool_registry import ToolRegistry
 
@@ -179,6 +182,37 @@ def main() -> None:
             audit.log_session_end()
 
 
+def _init_repl_history(path: str) -> None:
+    """Enable readline history persistence for the interactive REPL.
+
+    Importing `readline` (done at module top) is what gives `input()`
+    arrow-key navigation and emacs line editing — this function adds
+    cross-session recall by reading and writing a history file.
+    Silently degrades to in-session-only history if the file system
+    is read-only or otherwise uncooperative.
+    """
+    try:
+        os.makedirs(os.path.dirname(path), mode=0o700, exist_ok=True)
+        try:
+            readline.read_history_file(path)
+        except OSError:
+            pass  # first run, or unreadable — start with empty history
+        readline.set_history_length(1000)
+
+        def _save_history() -> None:
+            try:
+                readline.write_history_file(path)
+                # Prompts may contain customer paths / project names —
+                # tighten perms to match the ~/.daisy/api_key convention.
+                os.chmod(path, 0o600)
+            except OSError as exc:
+                LOG.debug("Could not persist REPL history to %s: %s", path, exc)
+
+        atexit.register(_save_history)
+    except OSError as exc:
+        LOG.debug("REPL history disabled (%s)", exc)
+
+
 def _handle_runtime_command(
     user_input: str, config: DaisyConfig, audit: AuditLogger,
 ) -> bool:
@@ -221,6 +255,7 @@ def _interactive_loop(
     session_mgr: Optional[Any] = None,
     session_name: Optional[str] = None,
 ) -> None:
+    _init_repl_history(DEFAULT_REPL_HISTORY)
     print("Agentic Daisy (interactive). Type 'exit' or Ctrl-D to quit.")
     print("Runtime commands: --budget <USD>   (0 = unlimited)\n")
     while True:

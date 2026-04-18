@@ -26,6 +26,7 @@ DEFAULT_BATCH_DIR = os.path.join(_PROJECT_ROOT, ".daisy", "batches")
 _USER_HOME = os.path.expanduser("~/.daisy")
 USER_SKILLS_DIR = os.path.join(_USER_HOME, "skills")
 USER_TOOLS_DIR = os.path.join(_USER_HOME, "tools")
+DEFAULT_REPL_HISTORY = os.path.join(_USER_HOME, "repl_history")
 DEFAULT_CUSTOM_TOOLS_DIR = os.path.join(_PROJECT_ROOT, ".daisy", "tools")
 
 # API key file stays in home dir (should NOT be inside the git repo)
