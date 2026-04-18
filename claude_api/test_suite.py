@@ -594,8 +594,15 @@ def test_system_prompt():
     assert "- save_memory:" not in prompt
     assert "- search_files:" not in prompt
     assert "- directory_tree:" not in prompt
-    # Sanity: prompt size should be well under the pre-refactor ~7.5KB
-    assert len(prompt) < 4000, "Prompt regressed in size: %d" % len(prompt)
+    # AE-perspective + anti-fabrication + stale-log rules added (~3KB).
+    # Pre-refactor was ~7.5KB; current ceiling keeps headroom but flags
+    # unbounded growth.
+    assert len(prompt) < 10_000, "Prompt regressed in size: %d" % len(prompt)
+    # New AE-perspective rules must be present
+    assert "Application Engineer" in prompt
+    assert "fabricat" in prompt.lower() or "invent" in prompt.lower()
+    assert "stale" in prompt.lower() or "mtime" in prompt.lower()
+    assert "compare_workspaces" in prompt
 
 
 @test("TaskStore: create + list + get + update lifecycle")

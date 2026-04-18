@@ -74,6 +74,29 @@ SYN got through the last-listed sub-stage and stopped.
 - `runtime: null` when the stage isn't SUCCESS (except SYN which can
   still show a runtime if a CSV was written).
 
+## Stale-Log Detection (MANDATORY for ONGOING)
+
+`current_status == ONGOING` only means the log lacks a completion marker.
+It does NOT mean the tool is still writing. Before describing an ONGOING
+stage as "active" or "in progress", verify the log is being written:
+
+```
+stat_file(path=<current_log_path>)   # returns mtime
+run_command("date +%s")              # current epoch
+```
+
+Decision rule based on `now - mtime`:
+- **< 5 minutes** -> "actively running" is OK to say.
+- **5 - 60 minutes** -> "ONGOING per the log marker, but no writes for N min
+  -- may be in a quiet phase or stalled". State the age explicitly.
+- **> 60 minutes** -> Do NOT say "in progress". Say "log has not been
+  written in N minutes; almost certainly stalled, killed, or finished
+  without the completion marker. Needs a process check (`ps`/`qstat`) to
+  confirm."
+
+The `final.csv` mtime check (`final_csv_mtime`) is the SYN-stage analog --
+a fresh `syn.log` with a stale csv is a partial / aborted run.
+
 ## Current-log Tail
 - `current_log_path` is the log file of `current_stage`; `current_log_tail`
   is its last ~40 lines, hard-capped at 4000 characters INCLUDING the

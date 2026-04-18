@@ -1,7 +1,7 @@
 ---
 name: tabulate_workspaces
 summary: Extract SYN/PNR metrics from EDA workspaces into a semicolon CSV, with optional baseline deltas
-trigger: "tabulate", "compare trials", "metrics for these workspaces", "tabulation.csv", "timing summary", "baseline compare", "vs baseline", "WNS TNS summary"
+trigger: "tabulate", "compare trials", "compare workspaces", "compare these directories", "compare it to", "vs", "versus", "delta", "what changed", "diff trials", "two work directories", "metrics for these workspaces", "tabulation.csv", "timing summary", "baseline compare", "vs baseline", "WNS TNS summary"
 ---
 
 # Tabulate EDA Workspaces
@@ -14,6 +14,11 @@ Output is a semicolon-delimited CSV designed to paste into Excel or LibreOffice.
 
 Run after `scan_workspaces` (use its `ACTIVE_workspaces.rpt`), or when the user
 explicitly lists workspace paths.
+
+**For two-directory comparison ("compare it to X", "vs Y", "what changed"),
+this is the FIRST tool to call** — do not start with raw `find` / `grep` /
+`tail` exploration. See the `compare_workspaces` skill for the full
+comparison playbook.
 
 ## Steps
 1. Identify the input:

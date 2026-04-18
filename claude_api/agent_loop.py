@@ -219,7 +219,10 @@ def run_agent_loop(
             cost = audit.get_session_cost()
             return (
                 "[Daisy: session budget of $%.2f reached (current: $%.4f). "
-                "Use --budget to increase or --budget 0 for unlimited.]"
+                "In interactive mode, type:  --budget <USD>   (e.g. "
+                "'--budget 2.00' or '--budget 0' for unlimited) at the next "
+                "prompt and resend your request. From the shell, restart "
+                "with: daisy --budget <USD> ...]"
                 % (config.budget, cost)
             )
         if budget_status == "warning":

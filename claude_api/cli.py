@@ -179,6 +179,40 @@ def main() -> None:
             audit.log_session_end()
 
 
+def _handle_runtime_command(
+    user_input: str, config: DaisyConfig, audit: AuditLogger,
+) -> bool:
+    """Handle in-REPL slash/dash commands. Returns True if handled."""
+    parts = user_input.split()
+    if not parts:
+        return False
+    cmd = parts[0]
+    if cmd not in ("--budget", "/budget"):
+        return False
+    if len(parts) < 2:
+        cur = audit.get_session_cost()
+        budget = "unlimited" if config.budget is None else "$%.2f" % config.budget
+        print("Current budget: %s   spent: $%.4f" % (budget, cur))
+        print("Usage: --budget <USD>   (0 = unlimited)")
+        return True
+    try:
+        new_budget = float(parts[1])
+    except ValueError:
+        print("ERROR: --budget expects a number (got %r)" % parts[1])
+        return True
+    if new_budget < 0:
+        print("ERROR: --budget must be >= 0 (got %s). Use 0 for unlimited." % new_budget)
+        return True
+    new = new_budget if new_budget > 0 else None
+    config.budget = new
+    audit._budget = new
+    audit._warned_budget = False
+    cur = audit.get_session_cost()
+    label = "unlimited" if new is None else "$%.2f" % new
+    print("Budget updated to %s   (current spend: $%.4f)" % (label, cur))
+    return True
+
+
 def _interactive_loop(
     config: DaisyConfig,
     registry: ToolRegistry,
@@ -187,7 +221,8 @@ def _interactive_loop(
     session_mgr: Optional[Any] = None,
     session_name: Optional[str] = None,
 ) -> None:
-    print("Agentic Daisy (interactive). Type 'exit' or Ctrl-D to quit.\n")
+    print("Agentic Daisy (interactive). Type 'exit' or Ctrl-D to quit.")
+    print("Runtime commands: --budget <USD>   (0 = unlimited)\n")
     while True:
         try:
             user_input = input("> ").strip()
@@ -198,6 +233,8 @@ def _interactive_loop(
             print("Goodbye.")
             break
         if not user_input:
+            continue
+        if _handle_runtime_command(user_input, config, audit):
             continue
         result = run_agent_loop(config, user_input, registry, audit, history)
         print("\n%s\n" % result)
