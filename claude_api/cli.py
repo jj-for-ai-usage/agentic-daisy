@@ -243,7 +243,8 @@ def _init_repl_history(path: str) -> None:
             readline.parse_and_bind("tab: complete")
         except Exception:
             pass
-        if "libedit" in getattr(readline, "__doc__", "") or "":
+        doc = getattr(readline, "__doc__", "") or ""
+        if "libedit" in doc:
             try:
                 readline.parse_and_bind("bind ^I rl_complete")
             except Exception:
