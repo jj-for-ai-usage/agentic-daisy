@@ -1,0 +1,203 @@
+#!/bin/bash
+# Agentic Daisy — environment readiness check
+#
+# Run this on a target machine (typically an air-gapped client server) to
+# determine whether the vendored toolchain is present and functional WITHOUT
+# requiring any internet access.
+#
+# Checks performed (no network calls):
+#   - Vendored Python wheels unpacked + importable
+#   - Vendored Node.js runtime extracted + executable
+#   - Vendored Claude Code CLI binary present + reports a version
+#   - Authentication state for Claude CLI (~/.claude/...)
+#   - Anthropic API key configured (env var or ~/.daisy/api_key)
+#
+# Exit codes:
+#   0  everything required is OK
+#   1  one or more required components are missing or broken
+#
+# Usage:
+#   bin/daisy-doctor            # full report
+#   bin/daisy-doctor --quiet    # only print FAIL lines + exit code
+
+set -u
+
+QUIET=0
+for arg in "$@"; do
+    case "$arg" in
+        -q|--quiet) QUIET=1 ;;
+        -h|--help)
+            sed -n '2,20p' "$0"; exit 0 ;;
+    esac
+done
+
+DAISY_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+VENDOR_DIR="$DAISY_ROOT/vendor"
+LIB_DIR="$VENDOR_DIR/lib"
+NODE_DIST="$VENDOR_DIR/node-dist"
+CLAUDE_DIST="$VENDOR_DIR/claude-dist"
+PYTHON="${DAISY_PYTHON:-python3::3.9.9}"
+
+# Color support (only if stdout is a TTY).
+if [ -t 1 ]; then
+    C_OK="\033[32m"; C_FAIL="\033[31m"; C_WARN="\033[33m"
+    C_DIM="\033[2m"; C_RESET="\033[0m"; C_BOLD="\033[1m"
+else
+    C_OK=""; C_FAIL=""; C_WARN=""; C_DIM=""; C_RESET=""; C_BOLD=""
+fi
+
+PASSED=0
+FAILED=0
+WARNED=0
+
+say() { [ "$QUIET" -eq 1 ] || printf "%b\n" "$*"; }
+hdr() { [ "$QUIET" -eq 1 ] || printf "\n${C_BOLD}== %s ==${C_RESET}\n" "$*"; }
+
+ok()   { say "  ${C_OK}[OK]${C_RESET}   $*"; PASSED=$((PASSED+1)); }
+warn() { say "  ${C_WARN}[WARN]${C_RESET} $*"; WARNED=$((WARNED+1)); }
+fail() { printf "  ${C_FAIL}[FAIL]${C_RESET} %b\n" "$*" >&2; FAILED=$((FAILED+1)); }
+info() { say "         ${C_DIM}$*${C_RESET}"; }
+
+hdr "Daisy environment"
+say "  root:    $DAISY_ROOT"
+say "  python:  $PYTHON"
+say "  uname:   $(uname -srm)"
+
+# ---------------------------------------------------------------------------
+# 1. Python + vendored wheels
+# ---------------------------------------------------------------------------
+hdr "1. Python wheels (vendor/lib)"
+# Try DAISY_PYTHON first (may be a magic launcher like python3::3.9.9 that
+# isn't a regular file on PATH but is intercepted by the shell), then python3,
+# then python.
+PY_VER=""
+for candidate in "$PYTHON" python3 python; do
+    if PY_VER="$($candidate --version 2>&1)" && [ -n "$PY_VER" ]; then
+        PYTHON="$candidate"
+        break
+    fi
+    PY_VER=""
+done
+if [ -z "$PY_VER" ]; then
+    fail "no working Python interpreter found (tried: $PYTHON, python3, python)"
+    info "Set DAISY_PYTHON to a valid python3 binary, or install Python 3.9+."
+else
+    ok "interpreter: $PY_VER ($PYTHON)"
+
+    if [ ! -d "$LIB_DIR" ] || [ -z "$(ls "$LIB_DIR"/ 2>/dev/null)" ]; then
+        fail "$LIB_DIR is empty -- run: bash vendor/install.sh"
+    else
+        if PYTHONPATH="$LIB_DIR" "$PYTHON" -c "import anthropic, sys; sys.stdout.write(anthropic.__version__)" >/tmp/.daisy-doctor-anthropic 2>/tmp/.daisy-doctor-anthropic-err; then
+            ok "anthropic SDK importable (v$(cat /tmp/.daisy-doctor-anthropic))"
+        else
+            fail "anthropic SDK not importable from $LIB_DIR"
+            info "$(cat /tmp/.daisy-doctor-anthropic-err 2>/dev/null | head -3)"
+        fi
+        rm -f /tmp/.daisy-doctor-anthropic /tmp/.daisy-doctor-anthropic-err
+    fi
+fi
+
+# ---------------------------------------------------------------------------
+# 2. Node.js runtime
+# ---------------------------------------------------------------------------
+hdr "2. Node.js runtime (vendor/node-dist)"
+if [ ! -x "$NODE_DIST/bin/node" ]; then
+    fail "vendored node missing at $NODE_DIST/bin/node"
+    if ls "$VENDOR_DIR/node"/node-v*-linux-x64.tar.xz >/dev/null 2>&1; then
+        info "tarball present -- run: bash vendor/install.sh"
+    else
+        info "tarball missing in vendor/node/ -- copy node-vXX.X.X-linux-x64.tar.xz there"
+    fi
+else
+    NODE_VER="$("$NODE_DIST/bin/node" --version 2>&1)"
+    if [ "${NODE_VER:0:1}" = "v" ]; then
+        ok "node: $NODE_VER ($NODE_DIST/bin/node)"
+    else
+        fail "node binary present but failed to run: $NODE_VER"
+        info "may be wrong arch -- check 'uname -m' (need x86_64) and glibc version"
+    fi
+fi
+
+# ---------------------------------------------------------------------------
+# 3. Claude Code CLI
+# ---------------------------------------------------------------------------
+hdr "3. Claude Code CLI (vendor/claude-dist)"
+CLAUDE_BIN="$CLAUDE_DIST/bin/claude"
+if [ ! -x "$NODE_DIST/bin/node" ]; then
+    fail "skipped -- requires Node.js (see section 2)"
+elif [ ! -e "$CLAUDE_BIN" ]; then
+    fail "claude launcher missing at $CLAUDE_BIN"
+    if ls "$VENDOR_DIR/claude"/anthropic-ai-claude-code-*.tgz >/dev/null 2>&1; then
+        info "tarballs present -- run: bash vendor/install.sh"
+    else
+        info "tarballs missing in vendor/claude/"
+    fi
+else
+    # The launcher symlinks to wrapper/bin/claude.exe which is the actual native binary.
+    REAL_BIN="$(readlink -f "$CLAUDE_BIN" 2>/dev/null || echo "$CLAUDE_BIN")"
+    if [ ! -x "$REAL_BIN" ]; then
+        fail "claude binary not executable: $REAL_BIN"
+    else
+        # --version is a fast no-network check that the binary loads.
+        if CLAUDE_VER="$(PATH="$NODE_DIST/bin:$PATH" "$CLAUDE_BIN" --version 2>&1)"; then
+            ok "claude CLI: $CLAUDE_VER"
+            info "binary: $REAL_BIN ($(du -h "$REAL_BIN" 2>/dev/null | cut -f1))"
+        else
+            fail "claude --version failed"
+            info "$(echo "$CLAUDE_VER" | head -3)"
+        fi
+    fi
+fi
+
+# ---------------------------------------------------------------------------
+# 4. Claude CLI authentication (Pro / Max / Console)
+# ---------------------------------------------------------------------------
+hdr "4. Claude CLI authentication"
+CLAUDE_CFG_DIR="${CLAUDE_CONFIG_DIR:-$HOME/.claude}"
+if [ -d "$CLAUDE_CFG_DIR" ] && ls "$CLAUDE_CFG_DIR" 2>/dev/null | grep -qE '\.credentials\.json|\.json'; then
+    ok "claude config directory exists: $CLAUDE_CFG_DIR"
+    if [ -f "$CLAUDE_CFG_DIR/.credentials.json" ]; then
+        info "credentials file present (OAuth login looks complete)"
+    else
+        warn "no .credentials.json yet -- run 'bin/claude' and use /login"
+    fi
+else
+    warn "no Claude CLI login yet (~/.claude not initialised)"
+    info "first run: bin/claude   then use /login (OAuth requires a browser)"
+fi
+
+# ---------------------------------------------------------------------------
+# 5. Anthropic API key (optional, used by claude_api/* python code)
+# ---------------------------------------------------------------------------
+hdr "5. Anthropic API key (for claude_api Python code)"
+API_KEY_FILE="$HOME/.daisy/api_key"
+if [ -n "${ANTHROPIC_API_KEY:-}" ]; then
+    ok "ANTHROPIC_API_KEY set (ends ...${ANTHROPIC_API_KEY: -4})"
+elif [ -f "$API_KEY_FILE" ] && [ -s "$API_KEY_FILE" ]; then
+    KEY_TAIL="$(tail -c 5 "$API_KEY_FILE" | tr -d '\n')"
+    ok "key file present at $API_KEY_FILE (ends ...$KEY_TAIL)"
+    PERMS="$(stat -c '%a' "$API_KEY_FILE" 2>/dev/null || stat -f '%Lp' "$API_KEY_FILE" 2>/dev/null)"
+    if [ -n "$PERMS" ] && [ "$PERMS" != "600" ]; then
+        warn "permissions on $API_KEY_FILE are $PERMS -- recommend: chmod 600 $API_KEY_FILE"
+    fi
+else
+    warn "no ANTHROPIC_API_KEY env var and no $API_KEY_FILE"
+    info "Python claude_api code will not run; the claude CLI itself can still"
+    info "use Pro/Max via OAuth without an API key."
+fi
+
+# ---------------------------------------------------------------------------
+# Summary
+# ---------------------------------------------------------------------------
+hdr "Summary"
+say "  passed: $PASSED   warnings: $WARNED   failed: $FAILED"
+if [ "$FAILED" -gt 0 ]; then
+    printf "${C_FAIL}NOT READY${C_RESET} -- %d required check(s) failed.\n" "$FAILED" >&2
+    exit 1
+fi
+if [ "$WARNED" -gt 0 ]; then
+    printf "${C_WARN}READY (with warnings)${C_RESET} -- toolchain works; auth/key may still be needed.\n"
+else
+    printf "${C_OK}READY${C_RESET} -- toolchain is fully set up.\n"
+fi
+exit 0

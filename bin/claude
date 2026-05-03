@@ -1,0 +1,39 @@
+#!/bin/bash
+# Agentic Daisy — Claude Code CLI launcher (vendored)
+#
+# Wraps the vendored Claude Code binary at vendor/claude-dist/bin/claude,
+# making sure the vendored Node.js runtime is on PATH first.
+#
+# Prerequisites (one-time):
+#   bash vendor/install.sh
+#
+# Usage:
+#   bin/claude                # interactive
+#   bin/claude "task"         # one-shot
+#   bin/claude /login         # log in with Claude Pro / Max / Console
+#
+# To check whether everything is installed and working, run:
+#   bin/daisy-doctor
+
+set -e
+
+DAISY_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+NODE_BIN="$DAISY_ROOT/vendor/node-dist/bin"
+CLAUDE_BIN="$DAISY_ROOT/vendor/claude-dist/bin/claude"
+
+if [ ! -x "$NODE_BIN/node" ]; then
+    echo "ERROR: Vendored Node.js not found at $NODE_BIN/node" >&2
+    echo "Run once:  bash $DAISY_ROOT/vendor/install.sh" >&2
+    exit 1
+fi
+
+if [ ! -x "$CLAUDE_BIN" ]; then
+    echo "ERROR: Vendored Claude CLI not found at $CLAUDE_BIN" >&2
+    echo "Run once:  bash $DAISY_ROOT/vendor/install.sh" >&2
+    exit 1
+fi
+
+# Put vendored node first on PATH so the claude binary's child processes find it.
+export PATH="$NODE_BIN:$PATH"
+
+exec "$CLAUDE_BIN" "$@"

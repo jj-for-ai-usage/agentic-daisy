@@ -2,7 +2,11 @@ __pycache__/
 *.py[cod]
 *.so
 vendor/lib/
+vendor/node-dist/
+vendor/claude-dist/
 !vendor/wheels/
+!vendor/node/
+!vendor/claude/
 .anthropic_key
 api_key
 ._*
